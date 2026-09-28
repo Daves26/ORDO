@@ -1,0 +1,468 @@
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+enum RoleCode {
+  ASESOR
+  BACK_OFFICE
+  CONTABILIDAD
+  GERENTE
+  ADMINISTRADOR
+}
+
+enum CommercialStatus {
+  BORRADOR
+  REGISTRADA
+  CONFIRMADA
+  CANCELADA
+}
+
+enum PaymentStatus {
+  REPORTADO
+  VALIDADO
+  RECHAZADO
+  ANULADO
+}
+
+enum ReservationStatus {
+  POR_RESERVAR
+  SOLICITADA
+  PENDIENTE_CONFIRMACION
+  CONFIRMADA
+  CANCELADA
+}
+
+enum PayableStatus {
+  PENDIENTE
+  PROGRAMADO
+  PAGO_SOLICITADO
+  EN_PROCESO
+  PAGADO
+  PENDIENTE_CONFIRMACION
+  CONFIRMADO
+  VOUCHER_RECIBIDO
+  ANULADO
+}
+
+enum TaskStatus {
+  PENDIENTE
+  EN_PROCESO
+  COMPLETADA
+  CANCELADA
+}
+
+model User {
+  id            String    @id @default(uuid()) @db.Uuid
+  name          String
+  email         String    @unique
+  passwordHash  String
+  active        Boolean   @default(true)
+  createdAt     DateTime  @default(now())
+  version       Int       @default(1)
+  roles         UserRole[]
+  sessions      Session[]
+  createdSales  Sale[]    @relation("SaleAdvisor")
+  auditEntries  AuditLog[]
+  createdCustomers Customer[] @relation("CustomerCreator")
+  reportedPayments CustomerPayment[] @relation("PaymentReporter")
+  assignedTasks Task[] @relation("TaskAssignee")
+  paymentCorrections PaymentAmountCorrection[]
+}
+
+model Role {
+  id          String @id @default(uuid()) @db.Uuid
+  code        RoleCode @unique
+  users       UserRole[]
+  permissions RolePermission[]
+}
+
+model Permission {
+  id    String @id @default(uuid()) @db.Uuid
+  code  String @unique
+  roles RolePermission[]
+}
+
+model UserRole {
+  userId String @db.Uuid
+  roleId String @db.Uuid
+  user   User @relation(fields: [userId], references: [id])
+  role   Role @relation(fields: [roleId], references: [id])
+  @@id([userId, roleId])
+}
+
+model RolePermission {
+  roleId String @db.Uuid
+  permissionId String @db.Uuid
+  role Role @relation(fields: [roleId], references: [id])
+  permission Permission @relation(fields: [permissionId], references: [id])
+  @@id([roleId, permissionId])
+}
+
+model Session {
+  id         String @id @default(uuid()) @db.Uuid
+  userId     String @db.Uuid
+  tokenHash  String @unique
+  expiresAt  DateTime
+  createdAt  DateTime @default(now())
+  user       User @relation(fields: [userId], references: [id], onDelete: Cascade)
+  @@index([expiresAt])
+}
+
+model LoginAttempt {
+  key       String @id
+  failures  Int @default(0)
+  lockedUntil DateTime?
+  updatedAt DateTime @updatedAt
+}
+
+model Customer {
+  id              String @id @default(uuid()) @db.Uuid
+  code            String @unique
+  firstName       String
+  lastName        String
+  documentType    String?
+  documentNumber  String?
+  documentCountry String? @default("CO")
+  phone           String
+  email           String?
+  address         String?
+  city            String?
+  billingName     String?
+  billingDocument String?
+  notes           String?
+  createdAt       DateTime @default(now())
+  updatedAt       DateTime @updatedAt
+  version         Int @default(1)
+  createdById     String @db.Uuid
+  createdBy       User @relation("CustomerCreator", fields: [createdById], references: [id])
+  sales           Sale[]
+  changes         CustomerChange[]
+  @@unique([documentCountry, documentType, documentNumber])
+  @@index([phone])
+  @@index([email])
+}
+
+model CustomerChange {
+  id         String @id @default(uuid()) @db.Uuid
+  customerId String @db.Uuid
+  actorId    String @db.Uuid
+  field      String
+  oldValue   String?
+  newValue   String?
+  createdAt  DateTime @default(now())
+  customer   Customer @relation(fields: [customerId], references: [id])
+  @@index([customerId, createdAt])
+}
+
+model Passenger {
+  id             String @id @default(uuid()) @db.Uuid
+  firstName      String
+  lastName       String
+  documentType   String?
+  documentNumber String?
+  passportExpiry DateTime? @db.Date
+  sales          SalePassenger[]
+}
+
+model SalePassenger {
+  saleId      String @db.Uuid
+  passengerId String @db.Uuid
+  sale        Sale @relation(fields: [saleId], references: [id])
+  passenger   Passenger @relation(fields: [passengerId], references: [id])
+  @@id([saleId, passengerId])
+}
+
+model SaleSequence {
+  // Historical sequence retained for legacy VEN identifiers; never used for new sales.
+  year   Int @id
+  number Int
+}
+
+model Sale {
+  id             String @id @default(uuid()) @db.Uuid
+  // Four-digit OS for new sales; legacy VEN codes remain until accounting replaces them.
+  number         String @unique
+  customerId     String @db.Uuid
+  advisorId      String @db.Uuid
+  destination    String
+  serviceType    String
+  startsAt       DateTime? @db.Date
+  endsAt         DateTime? @db.Date
+  total          Decimal @db.Decimal(16, 2)
+  currency       String @default("COP")
+  customerDueAt  DateTime? @db.Date
+  expectedPassengers Int?
+  notes          String?
+  commercialStatus CommercialStatus @default(BORRADOR)
+  version        Int @default(1)
+  createdAt      DateTime @default(now())
+  updatedAt      DateTime @updatedAt
+  registeredAt   DateTime?
+  customer       Customer @relation(fields: [customerId], references: [id])
+  advisor        User @relation("SaleAdvisor", fields: [advisorId], references: [id])
+  passengers     SalePassenger[]
+  services       Service[]
+  payments       CustomerPayment[]
+  tasks          Task[]
+  documents      Document[]
+  invoices       Invoice[]
+  receipts       Receipt[]
+  comments       Comment[]
+  @@index([advisorId, createdAt])
+  @@index([customerId, createdAt])
+}
+
+model Supplier {
+  id           String @id @default(uuid()) @db.Uuid
+  name         String
+  legalName    String?
+  taxId        String? @unique
+  phone        String?
+  email        String?
+  city         String?
+  country      String @default("CO")
+  paymentTerms String?
+  active       Boolean @default(true)
+  services     Service[]
+  payables     SupplierPayable[]
+}
+
+model Service {
+  id              String @id @default(uuid()) @db.Uuid
+  saleId          String @db.Uuid
+  supplierId      String? @db.Uuid
+  type            String
+  name            String
+  locator         String?
+  startsAt        DateTime?
+  endsAt          DateTime?
+  timezone        String?
+  salePrice       Decimal? @db.Decimal(16, 2)
+  cost            Decimal? @db.Decimal(16, 2)
+  currency        String @default("COP")
+  reservationStatus ReservationStatus @default(POR_RESERVAR)
+  paymentDueAt    DateTime? @db.Date
+  sale            Sale @relation(fields: [saleId], references: [id])
+  supplier        Supplier? @relation(fields: [supplierId], references: [id])
+  reservations    Reservation[]
+  payables        SupplierPayable[]
+  @@index([saleId])
+}
+
+model Reservation {
+  id        String @id @default(uuid()) @db.Uuid
+  serviceId String @db.Uuid
+  locator   String?
+  status    ReservationStatus @default(POR_RESERVAR)
+  createdAt DateTime @default(now())
+  service   Service @relation(fields: [serviceId], references: [id])
+}
+
+model CustomerPayment {
+  id             String @id @default(uuid()) @db.Uuid
+  saleId         String @db.Uuid
+  amount         Decimal @db.Decimal(16, 2)
+  currency       String @default("COP")
+  paidAt         DateTime
+  method         String
+  reference      String?
+  status         PaymentStatus @default(REPORTADO)
+  version        Int @default(1)
+  reportedById   String @db.Uuid
+  createdAt      DateTime @default(now())
+  voidReason     String?
+  sale           Sale @relation(fields: [saleId], references: [id])
+  reportedBy     User @relation("PaymentReporter", fields: [reportedById], references: [id])
+  validations    CustomerPaymentValidation[]
+  receipt        Receipt?
+  corrections    PaymentAmountCorrection[]
+  @@index([saleId, status])
+}
+
+model PaymentAmountCorrection {
+  id             String @id @default(uuid()) @db.Uuid
+  paymentId      String @db.Uuid
+  actorId        String @db.Uuid
+  receiptId      String? @db.Uuid
+  previousAmount Decimal @db.Decimal(16, 2)
+  newAmount      Decimal @db.Decimal(16, 2)
+  status         PaymentStatus
+  reason         String
+  createdAt      DateTime @default(now())
+  payment        CustomerPayment @relation(fields: [paymentId], references: [id])
+  actor          User @relation(fields: [actorId], references: [id])
+  receipt        Receipt? @relation(fields: [receiptId], references: [id])
+  @@index([paymentId, createdAt])
+}
+
+model CustomerPaymentValidation {
+  id        String @id @default(uuid()) @db.Uuid
+  paymentId String @db.Uuid
+  actorId   String @db.Uuid
+  action    String
+  reason    String?
+  createdAt DateTime @default(now())
+  payment   CustomerPayment @relation(fields: [paymentId], references: [id])
+}
+
+model SupplierPayable {
+  id         String @id @default(uuid()) @db.Uuid
+  supplierId String @db.Uuid
+  serviceId  String @db.Uuid
+  amount     Decimal @db.Decimal(16, 2)
+  currency   String @default("COP")
+  dueAt      DateTime @db.Date
+  status     PayableStatus @default(PENDIENTE)
+  supplier   Supplier @relation(fields: [supplierId], references: [id])
+  service    Service @relation(fields: [serviceId], references: [id])
+  payments   SupplierPayment[]
+  @@index([dueAt, status])
+}
+
+model SupplierPayment {
+  id        String @id @default(uuid()) @db.Uuid
+  payableId String @db.Uuid
+  amount    Decimal @db.Decimal(16, 2)
+  currency  String @default("COP")
+  paidAt    DateTime
+  reference String?
+  voidedAt  DateTime?
+  voidReason String?
+  payable   SupplierPayable @relation(fields: [payableId], references: [id])
+  expense   AccountingExpense?
+}
+
+model AccountingExpense {
+  id                String @id @default(uuid()) @db.Uuid
+  supplierPaymentId String @unique @db.Uuid
+  number            String @unique
+  createdAt         DateTime @default(now())
+  payment           SupplierPayment @relation(fields: [supplierPaymentId], references: [id])
+}
+
+model Invoice {
+  id         String @id @default(uuid()) @db.Uuid
+  saleId     String @db.Uuid
+  siigoId    String? @unique
+  number     String @unique
+  amount     Decimal @db.Decimal(16, 2)
+  issuedAt   DateTime
+  snapshot   Json
+  voidedAt   DateTime?
+  voidReason String?
+  sale       Sale @relation(fields: [saleId], references: [id])
+}
+
+model Receipt {
+  id         String @id @default(uuid()) @db.Uuid
+  saleId     String @db.Uuid
+  paymentId  String? @unique @db.Uuid
+  number     String @unique
+  amount     Decimal @db.Decimal(16, 2)
+  createdAt  DateTime @default(now())
+  voidedAt   DateTime?
+  voidReason String?
+  sale       Sale @relation(fields: [saleId], references: [id])
+  payment    CustomerPayment? @relation(fields: [paymentId], references: [id])
+  corrections PaymentAmountCorrection[]
+}
+
+model Document {
+  id         String @id @default(uuid()) @db.Uuid
+  saleId     String @db.Uuid
+  serviceId  String? @db.Uuid
+  type       String
+  objectKey  String @unique
+  filename   String
+  mimeType   String
+  uploadedById String @db.Uuid
+  createdAt  DateTime @default(now())
+  sale       Sale @relation(fields: [saleId], references: [id])
+}
+
+model Task {
+  id         String @id @default(uuid()) @db.Uuid
+  saleId     String @db.Uuid
+  paymentId  String? @unique @db.Uuid
+  assigneeId String? @db.Uuid
+  assignedRole RoleCode?
+  type       String
+  description String
+  dueAt      DateTime?
+  status     TaskStatus @default(PENDIENTE)
+  automatic  Boolean @default(true)
+  createdAt  DateTime @default(now())
+  sale       Sale @relation(fields: [saleId], references: [id])
+  assignee   User? @relation("TaskAssignee", fields: [assigneeId], references: [id])
+  @@index([assignedRole, status, dueAt])
+}
+
+model Alert {
+  id        String @id @default(uuid()) @db.Uuid
+  key       String @unique
+  saleId    String @db.Uuid
+  type      String
+  message   String
+  active    Boolean @default(true)
+  createdAt DateTime @default(now())
+  resolvedAt DateTime?
+}
+
+model Notification {
+  id        String @id @default(uuid()) @db.Uuid
+  userId    String @db.Uuid
+  message   String
+  readAt    DateTime?
+  createdAt DateTime @default(now())
+}
+
+model Comment {
+  id        String @id @default(uuid()) @db.Uuid
+  saleId    String @db.Uuid
+  authorId  String @db.Uuid
+  content   String
+  createdAt DateTime @default(now())
+  sale      Sale @relation(fields: [saleId], references: [id])
+}
+
+model AuditLog {
+  id         String @id @default(uuid()) @db.Uuid
+  actorId    String @db.Uuid
+  entity     String
+  entityId   String
+  action     String
+  before     Json?
+  after      Json?
+  reason     String?
+  ip         String?
+  createdAt  DateTime @default(now())
+  actor      User @relation(fields: [actorId], references: [id])
+  @@index([entity, entityId, createdAt])
+}
+
+model IdempotencyKey {
+  key       String @id
+  actorId   String @db.Uuid
+  operation String
+  entityId  String
+  createdAt DateTime @default(now())
+}
+
+model OutboxEvent {
+  id         String @id @default(uuid()) @db.Uuid
+  type       String
+  payload    Json
+  createdAt  DateTime @default(now())
+  processedAt DateTime?
+}
+
+model Configuration {
+  key       String @id
+  value     Json
+  updatedAt DateTime @updatedAt
+}

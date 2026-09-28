@@ -1,0 +1,43 @@
+{
+  "name": "ordo-agencia",
+  "version": "0.1.0",
+  "private": true,
+  "scripts": {
+    "dev": "next dev",
+    "build": "next build",
+    "start": "next start",
+    "postinstall": "prisma generate",
+    "typecheck": "tsc --noEmit",
+    "test": "vitest run",
+    "test:integration": "vitest run --config vitest.integration.config.mts",
+    "test:smoke": "node scripts/smoke.mjs",
+    "db:migrate": "prisma migrate dev",
+    "db:deploy": "prisma migrate deploy",
+    "db:seed": "tsx prisma/seed.ts"
+  },
+  "dependencies": {
+    "@fontsource/plus-jakarta-sans": "^5.2.8",
+    "@prisma/client": "6.12.0",
+    "bcryptjs": "^3.0.2",
+    "dotenv": "^18.0.4",
+    "lucide-react": "^0.468.0",
+    "next": "16.3.6",
+    "react": "^19.1.0",
+    "react-dom": "^19.1.0",
+    "zod": "^3.25.0"
+  },
+  "devDependencies": {
+    "@tailwindcss/postcss": "^4.1.0",
+    "@testing-library/react": "^16.3.3",
+    "@types/bcryptjs": "^2.4.6",
+    "@types/node": "^22.0.0",
+    "@types/react": "^19.0.0",
+    "@types/react-dom": "^19.0.0",
+    "jsdom": "^29.1.1",
+    "prisma": "6.12.0",
+    "tailwindcss": "^4.1.0",
+    "tsx": "^4.20.0",
+    "typescript": "^5.9.0",
+    "vitest": "^5.0.2"
+  }
+}
