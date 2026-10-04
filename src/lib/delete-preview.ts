@@ -12,7 +12,7 @@ function preview(label: string, confirmation: string, version: number, details: 
 
 export async function saleDeletionPreview(reader: Reader, id: string) {
   const sale = await reader.sale.findUnique({ where: { id }, select: {
-    number: true, version: true, _count: { select: { payments: true, receipts: true, documents: true, services: true, locators: true, tasks: true, invoices: true, passengers: true, comments: true, priceLines: true, orderIssues: true } },
+    number: true, version: true, _count: { select: { payments: true, receipts: true, documents: true, services: true, locators: true, tasks: true, invoices: true, passengers: true, comments: true, priceLines: true } },
   } });
   if (!sale) throw new AppError(404, "Orden de servicio no encontrada.");
   const [alerts, payables, supplierPayments, expenses, reservations, segments, validations, corrections, payments] = await Promise.all([
@@ -31,7 +31,7 @@ export async function saleDeletionPreview(reader: Reader, id: string) {
     documentos: sale._count.documents, servicios: sale._count.services, localizadores: sale._count.locators,
     tareas: sale._count.tasks, facturas: sale._count.invoices,
     pasajeros: sale._count.passengers, comentarios: sale._count.comments, alertas: alerts,
-    tramos_vuelo: segments, precios_pasajeros: sale._count.priceLines, ordenes_emitidas: sale._count.orderIssues,
+    tramos_vuelo: segments, precios_pasajeros: sale._count.priceLines,
     reservas: reservations, obligaciones: payables, pagos_proveedor: supplierPayments, egresos: expenses,
     validaciones: validations, correcciones: corrections,
     abonos_validados: payments.filter(({ status }) => status === "VALIDADO").length,

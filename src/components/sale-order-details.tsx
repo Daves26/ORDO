@@ -10,7 +10,7 @@ type Price = { category: "ADULTO" | "NINO" | "INFANTE"; quantity: number; unitPr
 type Order = { id: string; version: number; number: string; total?: string; customerDueAt?: string | null; requestedAt: string | null; contactName: string | null; holderName: string | null;
   billingName: string | null; billingDocument: string | null; billingPhone: string | null; billingAddress: string | null; billingCity: string | null;
   customer: { firstName: string; lastName: string; documentNumber: string | null; phone: string; address: string | null; city: string | null; billingName: string | null; billingDocument: string | null };
-  passengers: { passenger: Person }[]; services: Service[]; priceLines?: Price[]; orderIssues: { id: string; createdAt: string }[] };
+  passengers: { passenger: Person }[]; services: Service[]; priceLines?: Price[] };
 const blankPassenger = (): Person => ({ id: "", firstName: "", lastName: "", documentType: null, documentNumber: null, birthDate: "", passportNumber: null, passportExpiry: "" });
 const blankSegment = (): Segment => ({ airline: "", departureDate: "", arrivalDate: "", origin: "", destination: "", departureTime: "", arrivalTime: "", cabinClass: "" });
 const iso = (value: string | null | undefined) => value?.slice(0, 10) ?? "";
@@ -56,9 +56,7 @@ export function SaleOrderDetails({ saleId, saleVersion, canEditCommercial, canEd
     <PassengerSection key={`passengers-${sale.version}`} passengers={sale.passengers.map(({ passenger }) => passenger)} editable={canEditOperational} save={(passengers) => save("passengers", { passengers })} />
     <h3 style={{ marginTop: 30 }}>Servicios y emitido por</h3>
     {sale.services.map((service) => <ServiceSection key={`${service.id}-${sale.version}`} service={service} suppliers={suppliers} editable={canEditOperational} save={(fields) => save("service", { serviceId: service.id, ...fields })} createSupplier={createSupplier} />)}
-    {canViewFinancial && <><PriceSection key={`prices-${sale.version}`} prices={sale.priceLines ?? []} total={Number(sale.total)} editable={canEditCommercial} save={(lines) => save("prices", { lines })} />
-      <OrderIssues saleId={saleId} issues={sale.orderIssues} reloaded={async () => { await load(); await saved(); }} />
-    </>}
+    {canViewFinancial && <PriceSection key={`prices-${sale.version}`} prices={sale.priceLines ?? []} total={Number(sale.total)} editable={canEditCommercial} save={(lines) => save("prices", { lines })} />}
   </section>;
 }
 
@@ -131,24 +129,4 @@ function PriceSection({ prices, total, editable, save }: { prices: Price[]; tota
   </div><div className="list-row"><span>Desglose: {money(subtotal)}</span><strong>Total acordado: {money(total)}</strong></div>{lines.length > 0 && subtotal !== total && <p className="notice warning">Diferencia de {money(total - subtotal)} respecto al total acordado. Puede corresponder a otros servicios, cargos o descuentos.</p>}
   {editable && <div className="form-actions"><button className="btn btn-primary" disabled={busy || lines.some((line) => !Number.isInteger(line.quantity) || line.quantity < 1 || !Number.isInteger(line.unitPrice) || line.unitPrice < 0)}>{busy ? "Guardando…" : "Guardar desglose"}</button></div>}
   </form>;
-}
-
-function OrderIssues({ saleId, issues, reloaded }: { saleId: string; issues: Order["orderIssues"]; reloaded: () => Promise<void> }) {
-  const [busy, setBusy] = useState(false); const [error, setError] = useState("");
-  const [requestId, setRequestId] = useState(() => crypto.randomUUID());
-  async function issue() {
-    setBusy(true); setError("");
-    try {
-      const response = await fetch(`/api/sales/${saleId}/order-issues`, { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({ requestId }) });
-      if (!response.ok) { setError((await response.json()).error ?? "No se pudo emitir la orden."); return; }
-      setRequestId(crypto.randomUUID());
-      await reloaded();
-    } catch { setError("No se pudo confirmar la emisión. Comprueba las órdenes emitidas antes de volver a intentarlo."); }
-    finally { setBusy(false); }
-  }
-  return <div style={{ borderTop: "1px solid var(--border)", paddingTop: 20, marginTop: 25 }}><h3>Orden de servicio en PDF</h3><p className="muted small">Cada emisión conserva una copia de los datos, precios, pagos y recibos en ese momento. Las correcciones posteriores no alteran PDFs anteriores.</p>
-    <button className="btn btn-primary" type="button" onClick={issue} disabled={busy}>{busy ? "Emitiendo…" : "Emitir nueva versión"}</button>
-    {error && <p role="alert" className="notice error">{error}</p>}
-    {issues.map((item, index) => <div className="list-row" key={item.id}><span>Versión emitida {issues.length - index} · {date(item.createdAt)}</span><a className="btn" href={`/api/sales/${saleId}/order-issues/${item.id}`} target="_blank" rel="noopener noreferrer">Abrir PDF</a></div>)}
-  </div>;
 }

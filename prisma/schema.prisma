@@ -88,7 +88,6 @@ model User {
   assignedTasks Task[] @relation("TaskAssignee")
   paymentCorrections PaymentAmountCorrection[]
   createdLocators SaleLocator[]
-  issuedOrders SaleOrderIssue[]
 }
 
 model Role {
@@ -243,7 +242,6 @@ model Sale {
   receipts       Receipt[]
   comments       Comment[]
   priceLines     SalePriceLine[]
-  orderIssues    SaleOrderIssue[]
   @@index([advisorId, createdAt])
   @@index([customerId, createdAt])
 }
@@ -316,17 +314,6 @@ model SalePriceLine {
   unitPrice  Decimal @db.Decimal(16, 2)
   sale       Sale @relation(fields: [saleId], references: [id])
   @@unique([saleId, category])
-}
-
-model SaleOrderIssue {
-  id          String @id @default(uuid()) @db.Uuid
-  saleId      String @db.Uuid
-  createdById String @db.Uuid
-  createdAt   DateTime @default(now())
-  snapshot    Json
-  sale        Sale @relation(fields: [saleId], references: [id])
-  createdBy   User @relation(fields: [createdById], references: [id])
-  @@index([saleId, createdAt])
 }
 
 model Reservation {

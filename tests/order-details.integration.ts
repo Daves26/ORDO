@@ -17,13 +17,10 @@ const db = new PrismaClient({ datasources: { db: { url: testUrl } } });
 
 let detailRoute: typeof import("@/app/api/sales/[id]/order-details/route");
 let supplierRoute: typeof import("@/app/api/suppliers/route");
-let issuesRoute: typeof import("@/app/api/sales/[id]/order-issues/route");
-let pdfRoute: typeof import("@/app/api/sales/[id]/order-issues/[issueId]/route");
 let deleteRoute: typeof import("@/app/api/sales/[id]/delete/route");
-let saleId = "", otherSaleId = "", customerId = "", flightId = "", hotelId = "", supplierId = "", issueId = "";
+let saleId = "", otherSaleId = "", customerId = "", flightId = "", hotelId = "", supplierId = "";
 const users: { id: string; role: RoleCode }[] = [];
 const params = () => ({ params: Promise.resolve({ id: saleId }) });
-const issueParams = () => ({ params: Promise.resolve({ id: saleId, issueId }) });
 const request = (path: string, body?: object, method = "GET") => new Request(`http://localhost:3000${path}`, body ? { method, headers: { origin: "http://localhost:3000", "content-type": "application/json" }, body: JSON.stringify(body) } : undefined);
 const orderRequest = (data: object) => request(`/api/sales/${saleId}/order-details`, data, "PATCH");
 function become(role: RoleCode, other = false) {
@@ -53,8 +50,6 @@ beforeAll(async () => {
   hotelId = (await db.service.findFirstOrThrow({ where: { saleId, type: "HOTEL" } })).id;
   detailRoute = await import("@/app/api/sales/[id]/order-details/route");
   supplierRoute = await import("@/app/api/suppliers/route");
-  issuesRoute = await import("@/app/api/sales/[id]/order-issues/route");
-  pdfRoute = await import("@/app/api/sales/[id]/order-issues/[issueId]/route");
   deleteRoute = await import("@/app/api/sales/[id]/delete/route");
 });
 
@@ -72,13 +67,12 @@ afterAll(async () => {
   await db.$disconnect();
 });
 
-it("protege cada sección, guarda personas, pasajero, proveedor, tramos y desglose, y conserva el PDF emitido", async () => {
+it("protege cada sección y guarda personas, pasajero, proveedor, tramos y desglose", async () => {
   become(RoleCode.ASESOR, true);
   expect((await detailRoute.GET(request(`/api/sales/${saleId}/order-details`), params())).status).toBe(403);
   expect((await update("people", { requestedAt: "", contactName: "Sin permiso", holderName: "", billingName: "", billingDocument: "", billingPhone: "", billingAddress: "", billingCity: "" })).status).toBe(403);
   become(RoleCode.BACK_OFFICE);
   expect((await update("prices", { lines: [] })).status).toBe(403);
-  expect((await issuesRoute.POST(request(`/api/sales/${saleId}/order-issues`, { requestId: crypto.randomUUID() }, "POST"), params())).status).toBe(403);
   become(RoleCode.ASESOR);
   const people = { requestedAt: "2027-01-05", contactName: "María Acosta", holderName: "Luz López", billingName: "Empresa SAS", billingDocument: "900123456", billingPhone: "6011234567", billingAddress: "Calle 1", billingCity: "Bogotá" };
   expect((await update("people", people)).status).toBe(200);
@@ -107,26 +101,13 @@ it("protege cada sección, guarda personas, pasajero, proveedor, tramos y desglo
   expect((await update("prices", { lines: [{ category: "ADULTO", quantity: 2, unitPrice: 400_000 }, { category: "NINO", quantity: 1, unitPrice: 100_000 }] })).status).toBe(200);
   const current = await db.sale.findUniqueOrThrow({ where: { id: saleId } });
   expect(Number(current.total)).toBe(1_000_000);
-  const issueRequestId = crypto.randomUUID();
-  const issued = await issuesRoute.POST(request(`/api/sales/${saleId}/order-issues`, { requestId: issueRequestId }, "POST"), params());
-  expect(issued.status).toBe(201);
-  issueId = (await issued.json()).id;
-  const replay = await issuesRoute.POST(request(`/api/sales/${saleId}/order-issues`, { requestId: issueRequestId }, "POST"), params());
-  expect(replay.status).toBe(200);
-  expect((await replay.json()).id).toBe(issueId);
-  const original = await db.saleOrderIssue.findUniqueOrThrow({ where: { id: issueId } });
-  expect(original.snapshot).toMatchObject({ billingName: "Empresa SAS", validated: 0, balance: 1_000_000 });
-  const pdf = await pdfRoute.GET(request(`/api/sales/${saleId}/order-issues/${issueId}`), issueParams());
-  expect(pdf.status).toBe(200);
-  expect(pdf.headers.get("content-type")).toBe("application/pdf");
-  expect(Buffer.from(await pdf.arrayBuffer()).subarray(0, 5).toString()).toBe("%PDF-");
   expect((await update("people", { ...people, billingName: "Otra empresa" })).status).toBe(200);
-  expect((await db.saleOrderIssue.findUniqueOrThrow({ where: { id: issueId } })).snapshot).toMatchObject({ billingName: "Empresa SAS" });
+  expect((await db.sale.findUniqueOrThrow({ where: { id: saleId } })).billingName).toBe("Otra empresa");
   expect(await db.flightSegment.count({ where: { serviceId: flightId } })).toBe(1);
   expect(await db.salePriceLine.count({ where: { saleId } })).toBe(2);
 });
 
-it("impide modificaciones obsoletas y elimina detalles, PDFs y auditorías al borrar la OS", async () => {
+it("impide modificaciones obsoletas y elimina detalles relacionados al borrar la OS", async () => {
   become(RoleCode.ASESOR);
   const previous = (await db.sale.findUniqueOrThrow({ where: { id: saleId } })).version;
   const base = { requestedAt: "", contactName: "", holderName: "", billingName: "", billingDocument: "", billingPhone: "", billingAddress: "", billingCity: "" };
@@ -137,14 +118,10 @@ it("impide modificaciones obsoletas y elimina detalles, PDFs y auditorías al bo
   const impact = await (await deleteRoute.GET(request(url), params())).json();
   expect(impact.details.tramos_vuelo).toBe(1);
   expect(impact.details.precios_pasajeros).toBe(2);
-  expect(impact.details.ordenes_emitidas).toBe(1);
   const number = (await db.sale.findUniqueOrThrow({ where: { id: saleId } })).number;
   expect((await deleteRoute.POST(request(url, { confirm: number, fingerprint: impact.fingerprint }, "POST"), params())).status).toBe(200);
   expect(await db.flightSegment.count({ where: { serviceId: flightId } })).toBe(0);
   expect(await db.salePriceLine.count({ where: { saleId } })).toBe(0);
-  expect(await db.saleOrderIssue.count({ where: { saleId } })).toBe(0);
-  expect(await db.auditLog.count({ where: { entityId: issueId } })).toBe(0);
-  expect(await db.idempotencyKey.count({ where: { entityId: issueId } })).toBe(0);
   expect(await db.sale.findUnique({ where: { id: saleId } })).toBeNull();
   expect(await db.passenger.count({ where: { sales: { some: { saleId: otherSaleId } } } })).toBe(1);
   expect(await db.sale.findUnique({ where: { id: otherSaleId } })).not.toBeNull();

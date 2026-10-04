@@ -15,7 +15,6 @@ export async function GET(request: Request, { params }: Context) {
       customer: { select: { firstName: true, lastName: true, documentNumber: true, phone: true, address: true, city: true, billingName: true, billingDocument: true } },
       passengers: { include: { passenger: true } }, priceLines: true,
       services: { include: { supplier: true, flightSegments: { orderBy: { position: "asc" } } }, orderBy: { id: "asc" } },
-      orderIssues: { select: { id: true, createdAt: true }, orderBy: { createdAt: "desc" } },
     } });
     if (!sale) throw new AppError(404, "Orden no encontrada.");
     assertOrderAccess(actor, sale.advisorId);

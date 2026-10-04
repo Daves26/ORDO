@@ -9,7 +9,7 @@ const sample = { id: "sale-1", number: "0123", version: 2, requestedAt: null, co
   billingName: null, billingDocument: null, billingPhone: null, billingAddress: null, billingCity: null,
   customer: { firstName: "Ana", lastName: "Viajes", documentNumber: "123", phone: "3001234567", address: null, city: null, billingName: null, billingDocument: null },
   passengers: [], services: [{ id: "service-1", type: "VUELO", route: null, planType: null, baggage: null, transportCompany: null, hotelName: null, supplierId: null, supplier: null, flightSegments: [] }],
-  priceLines: [{ category: "ADULTO", quantity: 2, unitPrice: "400000" }], total: "1000000", customerDueAt: "2027-02-10", orderIssues: [] };
+  priceLines: [{ category: "ADULTO", quantity: 2, unitPrice: "400000" }], total: "1000000", customerDueAt: "2027-02-10" };
 
 it("muestra un desglose distinto al total y envía personas/version sin duplicar las fechas ya existentes", async () => {
   const send = vi.fn(async (url: string, init?: RequestInit) => {
@@ -22,7 +22,7 @@ it("muestra un desglose distinto al total y envía personas/version sin duplicar
   render(<SaleOrderDetails saleId="sale-1" saleVersion={2} canEditCommercial canEditOperational canViewFinancial saved={saved} />);
   expect(await screen.findByText(/Diferencia de.*respecto al total acordado/)).toBeTruthy();
   expect(screen.getByText(/N.º RSVA: los localizadores/)).toBeTruthy();
-  expect(screen.getByRole("button", { name: "Emitir nueva versión" })).toBeTruthy();
+  expect(screen.queryByText("Orden de servicio en PDF")).toBeNull();
   fireEvent.change(screen.getByLabelText("Contacto"), { target: { value: "María Acosta" } });
   fireEvent.submit(screen.getByRole("button", { name: "Guardar personas y facturación" }).closest("form")!);
   await waitFor(() => expect(saved).toHaveBeenCalledOnce());
@@ -30,11 +30,11 @@ it("muestra un desglose distinto al total y envía personas/version sin duplicar
   expect(JSON.parse(write[1]!.body as string)).toMatchObject({ section: "people", version: 2, contactName: "María Acosta" });
 });
 
-it("back office edita operación sin ver precios ni emitir un PDF financiero", async () => {
+it("back office edita operación sin ver precios financieros", async () => {
   vi.stubGlobal("fetch", vi.fn(async (url: string) => url === "/api/suppliers" ? { ok: true, json: async () => ({ suppliers: [] }) } : { ok: true, json: async () => ({ sale: { ...sample, total: undefined, priceLines: undefined } }) }));
   render(<SaleOrderDetails saleId="sale-1" saleVersion={2} canEditCommercial={false} canEditOperational canViewFinancial={false} saved={async () => {}} />);
   expect(await screen.findByRole("button", { name: "Añadir tramo de vuelo" })).toBeTruthy();
   expect(screen.getByRole("button", { name: "Añadir pasajero" })).toBeTruthy();
   expect(screen.queryByText("Valores por tipo de pasajero · COP")).toBeNull();
-  expect(screen.queryByRole("button", { name: "Emitir nueva versión" })).toBeNull();
+  expect(screen.queryByText("Orden de servicio en PDF")).toBeNull();
 });
