@@ -13,6 +13,7 @@ import { DeleteDialog } from "@/components/delete-dialog";
 import { useRouter } from "next/navigation";
 import { SaleLocators, type LocatorItem } from "@/components/sale-locators";
 import { serviceLabel } from "@/lib/service-types";
+import { SaleOrderDetails } from "@/components/sale-order-details";
 
 type CustomerPayment = { id: string; amount: string; version: number; status: string; method: string; paidAt: string; receipt: { number: string } | null; corrections: { previousAmount: string; newAmount: string; createdAt: string; reason: string; actor: { name: string } }[] };
 type Detail = {
@@ -28,7 +29,7 @@ type Detail = {
   validated: number; pending: number; balance: number; projectedBalance: number; portfolioStatus: string; gaps: string[];
 };
 
-export function SaleDetail({ id, actorId, canEditAllLocators, canEdit, canValidate, canViewFinancial, canDelete = false }: { id: string; actorId: string; canEditAllLocators: boolean; canEdit: boolean; canValidate: boolean; canViewFinancial: boolean; canDelete?: boolean }) {
+export function SaleDetail({ id, actorId, canEditAllLocators, canEdit, canEditOperational, canValidate, canViewFinancial, canDelete = false }: { id: string; actorId: string; canEditAllLocators: boolean; canEdit: boolean; canEditOperational: boolean; canValidate: boolean; canViewFinancial: boolean; canDelete?: boolean }) {
   const router = useRouter();
   const [data, setData] = useState<Detail | null>(null);
   const [error, setError] = useState("");
@@ -101,6 +102,7 @@ export function SaleDetail({ id, actorId, canEditAllLocators, canEdit, canValida
       <section className="card" style={{ marginTop: 20 }}><h2>Tareas del expediente</h2>{sale.tasks.length ? sale.tasks.map((task) => <div className="list-row" key={task.id}><span>{task.description}<br /><span className="muted small">{task.assignedRole?.replaceAll("_", " ") ?? "Asignada"}</span></span><span className="pill">{task.status}</span></div>) : <p className="muted">Las tareas se generarán cuando haya acciones pendientes.</p>}</section>
     </aside></div>
     <SaleLocators saleId={id} services={sale.services} locators={sale.locators} actorId={actorId} canEditAll={canEditAllLocators} canDelete={canDelete} saved={load} />
+    <SaleOrderDetails saleId={id} saleVersion={sale.version} canEditCommercial={canEdit} canEditOperational={canEdit || canEditOperational} canViewFinancial={canViewFinancial} saved={load} />
     {canEdit && sale.commercialStatus === "BORRADOR" && <div style={{ marginTop: 20 }}><DraftEditor id={id} sale={sale} saved={load} /></div>}
     {validating && <PaymentValidationDialog payment={validating} saleNumber={saleLabel(sale.number)} customerName={`${sale.customer.firstName} ${sale.customer.lastName}`} close={closeValidation} validated={async () => { await load(); closeValidation(); }} />}
     {correcting && <PaymentAmountDialog payment={correcting} balance={data.balance} projectedBalance={data.projectedBalance} close={closeCorrection} updated={async () => { await load(); closeCorrection(); }} />}

@@ -44,7 +44,7 @@ export async function PATCH(request: Request, { params }: Context) {
       const old = await tx.sale.findUnique({ where: { id }, include: {
         payments: { where: { status: { in: ["VALIDADO", "REPORTADO"] } }, select: { amount: true } },
         invoices: { select: { id: true }, take: 1 },
-        services: { include: { reservations: { select: { id: true }, take: 1 }, payables: { select: { id: true }, take: 1 }, locators: { select: { id: true }, take: 1 } } },
+        services: { include: { reservations: { select: { id: true }, take: 1 }, payables: { select: { id: true }, take: 1 }, locators: { select: { id: true }, take: 1 }, flightSegments: { select: { id: true }, take: 1 } } },
       } });
       if (!old) throw new AppError(404, "Venta no encontrada.");
       if (old.advisorId !== actor.id && !hasRole(actor, RoleCode.GERENTE)) throw new AppError(403, "No puedes editar esta venta.");
@@ -55,7 +55,7 @@ export async function PATCH(request: Request, { params }: Context) {
       if (input.total < committed) throw new AppError(422, "El valor no puede ser menor a los cobros registrados o pendientes.");
       const removed = input.services ? old.services.filter((service) => !input.services?.some((type) => type === service.type)) : [];
       for (const service of removed) {
-        if (!isSaleServiceType(service.type) || service.supplierId || service.locator || service.cost !== null || service.salePrice !== null || service.paymentDueAt || service.startsAt || service.endsAt || service.reservationStatus !== "POR_RESERVAR" || service.reservations.length || service.payables.length || service.locators.length || await tx.document.count({ where: { serviceId: service.id } })) {
+        if (!isSaleServiceType(service.type) || service.supplierId || service.locator || service.route || service.planType || service.baggage || service.transportCompany || service.hotelName || service.cost !== null || service.salePrice !== null || service.paymentDueAt || service.startsAt || service.endsAt || service.reservationStatus !== "POR_RESERVAR" || service.reservations.length || service.payables.length || service.locators.length || service.flightSegments.length || await tx.document.count({ where: { serviceId: service.id } })) {
           throw new AppError(409, `No puedes retirar ${serviceLabel(service.type)}: ya tiene información operativa, documentos o compromisos asociados.`);
         }
       }

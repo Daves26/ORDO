@@ -65,6 +65,12 @@ enum LocatorSource {
   OTRO
 }
 
+enum PassengerCategory {
+  ADULTO
+  NINO
+  INFANTE
+}
+
 model User {
   id            String    @id @default(uuid()) @db.Uuid
   name          String
@@ -82,6 +88,7 @@ model User {
   assignedTasks Task[] @relation("TaskAssignee")
   paymentCorrections PaymentAmountCorrection[]
   createdLocators SaleLocator[]
+  issuedOrders SaleOrderIssue[]
 }
 
 model Role {
@@ -175,6 +182,8 @@ model Passenger {
   lastName       String
   documentType   String?
   documentNumber String?
+  birthDate      DateTime? @db.Date
+  passportNumber String?
   passportExpiry DateTime? @db.Date
   sales          SalePassenger[]
 }
@@ -209,6 +218,14 @@ model Sale {
   customerDueAt  DateTime? @db.Date
   expectedPassengers Int?
   notes          String?
+  requestedAt    DateTime? @db.Date
+  contactName    String?
+  holderName     String?
+  billingName    String?
+  billingDocument String?
+  billingPhone   String?
+  billingAddress String?
+  billingCity    String?
   commercialStatus CommercialStatus @default(BORRADOR)
   version        Int @default(1)
   createdAt      DateTime @default(now())
@@ -225,6 +242,8 @@ model Sale {
   invoices       Invoice[]
   receipts       Receipt[]
   comments       Comment[]
+  priceLines     SalePriceLine[]
+  orderIssues    SaleOrderIssue[]
   @@index([advisorId, createdAt])
   @@index([customerId, createdAt])
 }
@@ -250,6 +269,11 @@ model Service {
   supplierId      String? @db.Uuid
   type            String
   name            String
+  route           String?
+  planType        String?
+  baggage         String?
+  transportCompany String?
+  hotelName       String?
   locator         String?
   startsAt        DateTime?
   endsAt          DateTime?
@@ -262,9 +286,47 @@ model Service {
   sale            Sale @relation(fields: [saleId], references: [id])
   supplier        Supplier? @relation(fields: [supplierId], references: [id])
   reservations    Reservation[]
+  flightSegments  FlightSegment[]
   locators        SaleLocator[]
   payables        SupplierPayable[]
   @@index([saleId])
+}
+
+model FlightSegment {
+  id              String @id @default(uuid()) @db.Uuid
+  serviceId       String @db.Uuid
+  position        Int
+  airline         String
+  departureDate   DateTime @db.Date
+  arrivalDate     DateTime? @db.Date
+  origin          String
+  destination     String
+  departureTime   String
+  arrivalTime     String
+  cabinClass      String?
+  service         Service @relation(fields: [serviceId], references: [id])
+  @@unique([serviceId, position])
+}
+
+model SalePriceLine {
+  id         String @id @default(uuid()) @db.Uuid
+  saleId     String @db.Uuid
+  category   PassengerCategory
+  quantity   Int
+  unitPrice  Decimal @db.Decimal(16, 2)
+  sale       Sale @relation(fields: [saleId], references: [id])
+  @@unique([saleId, category])
+}
+
+model SaleOrderIssue {
+  id          String @id @default(uuid()) @db.Uuid
+  saleId      String @db.Uuid
+  createdById String @db.Uuid
+  createdAt   DateTime @default(now())
+  snapshot    Json
+  sale        Sale @relation(fields: [saleId], references: [id])
+  createdBy   User @relation(fields: [createdById], references: [id])
+  @@index([saleId, createdAt])
 }
 
 model Reservation {

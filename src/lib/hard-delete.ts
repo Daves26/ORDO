@@ -27,9 +27,10 @@ export async function deletePaymentGraph(tx: Transaction, id: string) {
 export async function deleteSaleGraph(tx: Transaction, id: string) {
   const sale = await tx.sale.findUnique({ where: { id }, include: {
     payments: { select: { id: true } },
-    services: { select: { id: true, reservations: { select: { id: true } }, payables: { select: { id: true, payments: { select: { id: true, expense: { select: { id: true } } } } } } } },
+    services: { select: { id: true, flightSegments: { select: { id: true } }, reservations: { select: { id: true } }, payables: { select: { id: true, payments: { select: { id: true, expense: { select: { id: true } } } } } } } },
     receipts: { select: { id: true } }, invoices: { select: { id: true } }, documents: { select: { id: true } },
     tasks: { select: { id: true } }, comments: { select: { id: true } }, passengers: { select: { passengerId: true } }, locators: { select: { id: true } },
+    priceLines: { select: { id: true } }, orderIssues: { select: { id: true } },
   } });
   if (!sale) throw new AppError(404, "Orden de servicio no encontrada.");
   const serviceIds = sale.services.map(({ id }) => id);
@@ -39,7 +40,9 @@ export async function deleteSaleGraph(tx: Transaction, id: string) {
   const identifiers = [id, ...serviceIds, ...sale.services.flatMap(({ reservations }) => reservations.map(({ id }) => id)),
     ...payableIds, ...supplierPayments.map(({ id }) => id), ...supplierPayments.flatMap(({ expense }) => expense ? [expense.id] : []),
     ...sale.receipts.map(({ id }) => id), ...sale.invoices.map(({ id }) => id), ...sale.documents.map(({ id }) => id),
-    ...sale.tasks.map(({ id }) => id), ...sale.comments.map(({ id }) => id), ...sale.locators.map(({ id }) => id)];
+    ...sale.tasks.map(({ id }) => id), ...sale.comments.map(({ id }) => id), ...sale.locators.map(({ id }) => id),
+    ...sale.services.flatMap(({ flightSegments }) => flightSegments.map(({ id }) => id)),
+    ...sale.priceLines.map(({ id }) => id), ...sale.orderIssues.map(({ id }) => id)];
   const alerts = await tx.alert.findMany({ where: { saleId: id }, select: { id: true } });
   identifiers.push(...alerts.map(({ id }) => id));
 
@@ -49,7 +52,10 @@ export async function deleteSaleGraph(tx: Transaction, id: string) {
   await tx.supplierPayment.deleteMany({ where: { payableId: { in: payableIds } } });
   await tx.supplierPayable.deleteMany({ where: { serviceId: { in: serviceIds } } });
   await tx.reservation.deleteMany({ where: { serviceId: { in: serviceIds } } });
+  await tx.flightSegment.deleteMany({ where: { serviceId: { in: serviceIds } } });
   await tx.service.deleteMany({ where: { saleId: id } });
+  await tx.salePriceLine.deleteMany({ where: { saleId: id } });
+  await tx.saleOrderIssue.deleteMany({ where: { saleId: id } });
   await tx.receipt.deleteMany({ where: { saleId: id } });
   await tx.invoice.deleteMany({ where: { saleId: id } });
   await tx.task.deleteMany({ where: { saleId: id } });

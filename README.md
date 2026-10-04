@@ -7,9 +7,11 @@ Ordo reúne clientes y ventas en un expediente compartido. Esta es una **versió
 | Área | Disponible actualmente |
 | --- | --- |
 | Acceso | Inicio y cierre de sesión; usuarios con varios roles. ADMINISTRADOR es superusuario de las funciones disponibles y puede gestionar roles propios y ajenos. |
-| Clientes | Ficha maestra, búsqueda, aviso de posibles duplicados, bloqueo por documento repetido, edición e historial de cambios. Cliente y pasajero son entidades distintas. |
+| Clientes y pasajeros | Ficha maestra, búsqueda, aviso de posibles duplicados, bloqueo por documento repetido, edición e historial de cambios. Pasajeros independientes del cliente, con documento, nacimiento y pasaporte, reutilizables entre OS. |
 | Ventas | Captura rápida en borrador, expediente, autoguardado del borrador y transición a venta registrada. El asesor ingresa una OS única de **cuatro dígitos**; se presenta como `OS 0123`. Selecciona varios servicios incluidos y puede dejar observaciones generales de la orden. |
 | Localizadores | Múltiples códigos por OS, con origen y emisor; vínculo opcional a un servicio. Todos los roles pueden añadirlos según su acceso a la venta; autor, back office y administrador pueden corregirlos con historial. |
+| Orden de servicio física | Contacto, titular, datos de facturación, pasajeros, ruta, plan, equipaje, transporte, hotel, proveedor emisor por servicio y tramos de vuelo. Cantidad y precio unitario por tipo de pasajero, sin cambiar el total acordado. |
+| PDF de la OS | Emisión de versiones PDF con copia histórica de datos, servicios, localizadores, desglose, abonos y recibos. Los cambios posteriores no alteran versiones anteriores. |
 | Cartera | Abono inicial u otros abonos reportados, validación contable, múltiples pagos y saldos calculados. Un abono reportado no reduce el saldo contable hasta validarse. |
 | Recibos | Validar exige un número de recibo de caja único, compuesto solo por dígitos (por ejemplo `000123`). Contabilidad ve el importe y el número antes de confirmar. |
 | Correcciones | Contabilidad puede corregir OS e importes con motivo, confirmación y control de concurrencia. Al corregir un abono validado, se corrige también el importe de su recibo **sin cambiar el número**; el valor anterior queda en el historial. |
@@ -18,6 +20,8 @@ Ordo reúne clientes y ventas en un expediente compartido. Esta es una **versió
 La interfaz sigue el sistema visual **Corporate Trust**. En `/ventas/nueva` se selecciona o crea primero el cliente; los demás campos se habilitan después. Salida y regreso conservan escritura por teclado en `DD/MM/AAAA` y abren un calendario al hacer clic; tras elegir salida se abre regreso, que debe ser **posterior** a la salida. Las fechas de pago mantienen la captura por teclado. Nombres, apellidos, ciudad y dirección reciben mayúscula inicial mientras se capturan. Hay búsqueda global con `Ctrl+K`, nueva venta con `Ctrl+N` y navegación del selector de clientes mediante teclado.
 
 En **Servicios incluidos** se pueden elegir Vuelos, Hotel, Traslados, Asistencia médica, Tours y Otro, sin valores preseleccionados. Se exige al menos uno; si se elige **Otro**, las observaciones de la OS deben indicar de qué servicio se trata. Cada opción genera un servicio inicial en estado «Por reservar», sin atribuirle proveedor o costo ficticios. Desde el borrador se pueden ajustar servicios y observaciones; un servicio que ya tenga datos operativos o compromisos no puede retirarse por este flujo. Las órdenes históricas con categoría `PAQUETE` conservan ese dato sin un desglose inventado.
+
+En el expediente, **N.º RSVA** reutiliza los localizadores, **Plazo RSVA** reutiliza el pago máximo del cliente e **IN/OUT** reutiliza salida y regreso. «Emitido por» se toma del proveedor vinculado a cada servicio; no se confunde con el emisor del localizador. Los precios por tipo de pasajero muestran la diferencia frente al total acordado, sin cambiarlo ni alterar cobros. El asesor y gerencia completan los datos comerciales; back office completa pasajeros y servicios sin acceder a precios; contabilidad puede consultar y emitir el documento. La OS PDF se descarga desde una versión emitida e inmutable.
 
 ### Identificadores y dinero
 
@@ -60,7 +64,7 @@ Para despliegue: publicar detrás de HTTPS, usar secretos distintos por entorno,
 
 ## Alcance actual y documentación
 
-El esquema relacional incluye entidades para pasajeros, servicios, reservas, proveedores, obligaciones, facturas, documentos y alertas, y sirve de base para reportes futuros. **La selección inicial de servicios y el registro de localizadores funcionan, pero todavía no equivalen a gestionar reservas**. Las demás funciones planeadas están inventariadas en [16 mejoras pendientes](docs/mejoras-pendientes.md). El registro de RC no emite por sí mismo un recibo en el sistema contable. No se incluye importación de Excel.
+El esquema relacional incluye entidades para reservas, obligaciones, facturas, documentos y alertas, y sirve de base para reportes futuros. **Capturar servicios, proveedores, vuelos y localizadores no equivale todavía a confirmar reservas ni a gestionar pagos a proveedores**. Las ampliaciones planeadas están inventariadas en [16 áreas de mejora pendientes](docs/mejoras-pendientes.md). El registro de RC no emite por sí mismo un recibo en el sistema contable. No se incluye importación de Excel.
 
 - [Arquitectura y decisiones de negocio](docs/arquitectura.md)
 - [Funcionalidades implementadas, API y pruebas](docs/incremento-01.md)
