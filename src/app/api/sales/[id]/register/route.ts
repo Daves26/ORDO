@@ -11,7 +11,7 @@ export async function POST(request: Request, { params }: Context) {
     const actor = await authorize(request, (user) => hasRole(user, RoleCode.ASESOR, RoleCode.GERENTE), true);
     const { id } = await params;
     const updated = await db.$transaction(async (tx) => {
-      const sale = await tx.sale.findUnique({ where: { id } });
+      const sale = await tx.sale.findUnique({ where: { id }, include: { services: { select: { type: true } } } });
       if (!sale) throw new AppError(404, "Venta no encontrada.");
       if (sale.advisorId !== actor.id && !hasRole(actor, RoleCode.GERENTE)) throw new AppError(403, "Solo el asesor responsable puede registrar la venta.");
       if (sale.commercialStatus !== "BORRADOR") throw new AppError(409, "La venta ya no está en borrador.");

@@ -12,7 +12,7 @@ function preview(label: string, confirmation: string, version: number, details: 
 
 export async function saleDeletionPreview(reader: Reader, id: string) {
   const sale = await reader.sale.findUnique({ where: { id }, select: {
-    number: true, version: true, _count: { select: { payments: true, receipts: true, documents: true, services: true, tasks: true, invoices: true, passengers: true, comments: true } },
+    number: true, version: true, _count: { select: { payments: true, receipts: true, documents: true, services: true, locators: true, tasks: true, invoices: true, passengers: true, comments: true } },
   } });
   if (!sale) throw new AppError(404, "Orden de servicio no encontrada.");
   const [alerts, payables, supplierPayments, expenses, reservations, validations, corrections, payments] = await Promise.all([
@@ -27,7 +27,7 @@ export async function saleDeletionPreview(reader: Reader, id: string) {
   ]);
   return preview(saleLabel(sale.number), sale.number, sale.version, {
     ventas: 1, abonos: sale._count.payments, recibos: sale._count.receipts,
-    documentos: sale._count.documents, servicios: sale._count.services,
+    documentos: sale._count.documents, servicios: sale._count.services, localizadores: sale._count.locators,
     tareas: sale._count.tasks, facturas: sale._count.invoices,
     pasajeros: sale._count.passengers, comentarios: sale._count.comments, alertas: alerts,
     reservas: reservations, obligaciones: payables, pagos_proveedor: supplierPayments, egresos: expenses,

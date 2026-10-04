@@ -11,21 +11,24 @@ import { PaymentAmountDialog } from "@/components/payment-amount-dialog";
 import { saleLabel, isOrderNumber } from "@/lib/sale-number";
 import { DeleteDialog } from "@/components/delete-dialog";
 import { useRouter } from "next/navigation";
+import { SaleLocators, type LocatorItem } from "@/components/sale-locators";
+import { serviceLabel } from "@/lib/service-types";
 
 type CustomerPayment = { id: string; amount: string; version: number; status: string; method: string; paidAt: string; receipt: { number: string } | null; corrections: { previousAmount: string; newAmount: string; createdAt: string; reason: string; actor: { name: string } }[] };
 type Detail = {
   sale: {
-    id: string; number: string; destination: string; serviceType: string; startsAt: string | null;
+    id: string; number: string; destination: string; serviceType: string | null; services: { id: string; type: string; name: string }[]; notes: string | null; startsAt: string | null;
     endsAt: string | null; customerDueAt: string | null; total: string; version: number;
     commercialStatus: string; customer: { id: string; firstName: string; lastName: string; phone: string; email: string | null };
     advisor: { name: string }; payments: CustomerPayment[];
+    locators: LocatorItem[];
     receipts: { id: string; number: string; paymentId: string | null }[];
     tasks: { id: string; description: string; status: string; assignedRole: string | null }[];
   };
   validated: number; pending: number; balance: number; projectedBalance: number; portfolioStatus: string; gaps: string[];
 };
 
-export function SaleDetail({ id, canEdit, canValidate, canViewFinancial, canDelete = false }: { id: string; canEdit: boolean; canValidate: boolean; canViewFinancial: boolean; canDelete?: boolean }) {
+export function SaleDetail({ id, actorId, canEditAllLocators, canEdit, canValidate, canViewFinancial, canDelete = false }: { id: string; actorId: string; canEditAllLocators: boolean; canEdit: boolean; canValidate: boolean; canViewFinancial: boolean; canDelete?: boolean }) {
   const router = useRouter();
   const [data, setData] = useState<Detail | null>(null);
   const [error, setError] = useState("");
@@ -78,7 +81,8 @@ export function SaleDetail({ id, canEdit, canValidate, canViewFinancial, canDele
     <div className="grid split"><section className="card">
       <h2>Información de la venta</h2>
       <div className="list-row"><span className="muted">Cliente</span><Link style={{ color: "var(--primary)", fontWeight: 700 }} href={`/clientes/${sale.customer.id}`}>{sale.customer.firstName} {sale.customer.lastName} →</Link></div>
-      <div className="list-row"><span className="muted">Servicio principal</span><strong>{sale.serviceType}</strong></div>
+      <div className="list-row"><span className="muted">Servicios incluidos</span><strong style={{ textAlign: "right" }}>{sale.services.length ? sale.services.map((service) => serviceLabel(service.type)).join(", ") : sale.serviceType ? `${serviceLabel(sale.serviceType)} (sin desglose)` : "Pendientes"}</strong></div>
+      <div className="list-row"><span className="muted">Observaciones de la orden</span><span style={{ maxWidth: "65%", textAlign: "right", whiteSpace: "pre-wrap" }}>{sale.notes || "Sin observaciones"}</span></div>
       <div className="list-row"><span className="muted">Salida</span><strong>{date(sale.startsAt)}</strong></div>
       <div className="list-row"><span className="muted">Regreso</span><strong>{date(sale.endsAt)}</strong></div>
       {canViewFinancial && <>
@@ -96,6 +100,7 @@ export function SaleDetail({ id, canEdit, canValidate, canViewFinancial, canDele
       <section className="card"><h2>Siguiente paso</h2>{data.gaps.length ? <><p className="muted">Antes de registrar la venta falta:</p>{data.gaps.map((gap) => <div className="list-row" key={gap}><span><CircleAlert size={15} color="#9a5200" aria-hidden="true" /> {gap}</span><span className="pill warning">Pendiente</span></div>)}<p className="muted small">Los datos se completarán en el formulario del expediente.</p></> : <div className="notice success">Los mínimos comerciales están completos.</div>}{canEdit && sale.commercialStatus === "BORRADOR" && <button style={{ marginTop: 20, width: "100%" }} className="btn btn-primary" onClick={register} disabled={busy || data.gaps.length > 0}>Registrar venta</button>}</section>
       <section className="card" style={{ marginTop: 20 }}><h2>Tareas del expediente</h2>{sale.tasks.length ? sale.tasks.map((task) => <div className="list-row" key={task.id}><span>{task.description}<br /><span className="muted small">{task.assignedRole?.replaceAll("_", " ") ?? "Asignada"}</span></span><span className="pill">{task.status}</span></div>) : <p className="muted">Las tareas se generarán cuando haya acciones pendientes.</p>}</section>
     </aside></div>
+    <SaleLocators saleId={id} services={sale.services} locators={sale.locators} actorId={actorId} canEditAll={canEditAllLocators} canDelete={canDelete} saved={load} />
     {canEdit && sale.commercialStatus === "BORRADOR" && <div style={{ marginTop: 20 }}><DraftEditor id={id} sale={sale} saved={load} /></div>}
     {validating && <PaymentValidationDialog payment={validating} saleNumber={saleLabel(sale.number)} customerName={`${sale.customer.firstName} ${sale.customer.lastName}`} close={closeValidation} validated={async () => { await load(); closeValidation(); }} />}
     {correcting && <PaymentAmountDialog payment={correcting} balance={data.balance} projectedBalance={data.projectedBalance} close={closeCorrection} updated={async () => { await load(); closeCorrection(); }} />}

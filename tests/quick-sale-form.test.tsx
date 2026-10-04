@@ -45,6 +45,11 @@ it("bloquea la captura hasta crear al cliente y convierte DD/MM/AAAA a ISO al re
   fireEvent.change(screen.getByLabelText("Número de orden de servicio *"), { target: { value: "0123" } });
   await screen.findByText("OS disponible.");
   fireEvent.change(destination, { target: { value: "Cancún" } });
+  fireEvent.click(screen.getByRole("button", { name: /Servicios incluidos/ }));
+  fireEvent.click(screen.getByRole("checkbox", { name: "Vuelos" }));
+  fireEvent.click(screen.getByRole("checkbox", { name: "Hotel" }));
+  fireEvent.click(screen.getByRole("button", { name: /Servicios incluidos/ }));
+  fireEvent.change(screen.getByLabelText("Observaciones de la orden de servicio"), { target: { value: "Incluye vuelo y hotel frente al mar." } });
   fireEvent.change(screen.getByLabelText("Salida"), { target: { value: "15112026" } });
   fireEvent.change(screen.getByLabelText("Regreso"), { target: { value: "20112026" } });
   fireEvent.change(screen.getByLabelText("Valor total · COP *"), { target: { value: "8000000" } });
@@ -52,7 +57,7 @@ it("bloquea la captura hasta crear al cliente y convierte DD/MM/AAAA a ISO al re
   fireEvent.submit(screen.getByRole("button", { name: "Crear venta" }).closest("form")!);
   await waitFor(() => expect(navigation.push).toHaveBeenCalledWith("/ventas/venta-1"));
   const call = send.mock.calls.find(([url]) => url === "/api/sales")!;
-  expect(JSON.parse((call[1] as RequestInit).body as string)).toMatchObject({ customerId: customer.id, orderNumber: "0123", startsAt: "2026-11-15", endsAt: "2026-11-20", total: 8_000_000 });
+  expect(JSON.parse((call[1] as RequestInit).body as string)).toMatchObject({ customerId: customer.id, orderNumber: "0123", services: ["VUELO", "HOTEL"], notes: "Incluye vuelo y hotel frente al mar.", startsAt: "2026-11-15", endsAt: "2026-11-20", total: 8_000_000 });
   expect(screen.queryByLabelText(/Referencia/i)).toBeNull();
 });
 
@@ -63,4 +68,22 @@ it("separa un fallo de búsqueda de un cliente inexistente", async () => {
   await screen.findByText("No se pudo consultar la base. Reintenta la búsqueda.");
   expect(screen.getByLabelText("Cliente *").getAttribute("aria-invalid")).toBeNull();
   expect(screen.queryByRole("button", { name: "Crear cliente aquí" })).toBeNull();
+});
+
+it("exige especificar Otro en las observaciones y mantiene el selector sin opciones preseleccionadas", async () => {
+  const customer = { id: crypto.randomUUID(), code: "CLI-2", firstName: "Ana", lastName: "Ruiz", phone: "3150000000", documentNumber: null, documentType: null, email: null, city: null };
+  vi.stubGlobal("fetch", vi.fn().mockImplementation(async (url: string) => url.startsWith("/api/customers?q=")
+    ? { ok: true, json: async () => ({ customers: [customer] }) }
+    : { ok: true, json: async () => ({ available: true }) }));
+  vi.stubGlobal("requestAnimationFrame", (callback: FrameRequestCallback) => { callback(0); return 1; });
+  render(<QuickSaleForm />);
+  fireEvent.change(screen.getByLabelText("Cliente *"), { target: { value: "Ana" } });
+  fireEvent.click(await screen.findByRole("option", { name: /Ana Ruiz/ }));
+  fireEvent.change(screen.getByLabelText("Número de orden de servicio *"), { target: { value: "0345" } });
+  fireEvent.click(screen.getByRole("button", { name: /Servicios incluidos/ }));
+  expect((screen.getByRole("checkbox", { name: "Vuelos" }) as HTMLInputElement).checked).toBe(false);
+  fireEvent.click(screen.getByRole("checkbox", { name: "Otro" }));
+  expect((screen.getByRole("button", { name: "Crear venta" }) as HTMLButtonElement).disabled).toBe(true);
+  fireEvent.change(screen.getByLabelText("Observaciones de la orden de servicio *"), { target: { value: "Alquiler de vehículo" } });
+  expect((screen.getByRole("button", { name: "Crear venta" }) as HTMLButtonElement).disabled).toBe(false);
 });

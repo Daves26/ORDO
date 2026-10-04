@@ -5,6 +5,7 @@ import { db } from "@/lib/db";
 import { AppError, authorize, payload, respond } from "@/lib/http";
 import { parseDate, saleSchema } from "@/lib/validation";
 import { saleLabel } from "@/lib/sale-number";
+import { serviceLabel } from "@/lib/service-types";
 
 export async function GET(request: Request) {
   try {
@@ -49,14 +50,16 @@ export async function POST(request: Request) {
           const sale = await tx.sale.create({ data: {
             number: input.orderNumber,
             customerId: customer.id, advisorId, destination: input.destination,
-            serviceType: input.serviceType, startsAt: parseDate(input.startsAt), endsAt: parseDate(input.endsAt),
+            serviceType: null, notes: input.notes || null,
+            services: { create: input.services.map((type) => ({ type, name: serviceLabel(type), currency: "COP" })) },
+            startsAt: parseDate(input.startsAt), endsAt: parseDate(input.endsAt),
             customerDueAt: parseDate(input.customerDueAt), total: input.total, currency: "COP",
           } });
           if (input.initialPayment) {
             const payment = await tx.customerPayment.create({ data: { saleId: sale.id, amount: input.initialPayment, currency: "COP", paidAt: new Date(), method: input.paymentMethod!, reportedById: actor.id } });
             await tx.task.create({ data: { saleId: sale.id, paymentId: payment.id, type: "VALIDAR_PAGO", assignedRole: RoleCode.CONTABILIDAD, description: "Validar abono reportado" } });
           }
-          await tx.auditLog.create({ data: { actorId: actor.id, entity: "Sale", entityId: sale.id, action: "CREAR_BORRADOR", after: { orderNumber: sale.number, advisorId, total: input.total, customerId: customer.id, initialPayment: input.initialPayment } } });
+          await tx.auditLog.create({ data: { actorId: actor.id, entity: "Sale", entityId: sale.id, action: "CREAR_BORRADOR", after: { orderNumber: sale.number, advisorId, services: input.services, notes: input.notes, total: input.total, customerId: customer.id, initialPayment: input.initialPayment } } });
           await tx.idempotencyKey.create({ data: { key: input.requestId, actorId: actor.id, operation: "SALE_CREATE", entityId: sale.id } });
           return sale.id;
         }, { isolationLevel: Prisma.TransactionIsolationLevel.Serializable, maxWait: 10_000, timeout: 10_000 });

@@ -51,15 +51,8 @@ afterAll(async () => {
     await db.auditLog.deleteMany({ where: { actorId: userId } });
     await db.idempotencyKey.deleteMany({ where: { actorId: userId } });
     const saleIds = [saleId, ...extraSaleIds].filter(Boolean);
-    const payments = await db.customerPayment.findMany({ where: { saleId: { in: saleIds } }, select: { id: true } });
-    await db.paymentAmountCorrection.deleteMany({ where: { paymentId: { in: payments.map((p) => p.id) } } });
-    await db.customerPaymentValidation.deleteMany({ where: { paymentId: { in: payments.map((p) => p.id) } } });
-    if (saleIds.length) {
-      await db.task.deleteMany({ where: { saleId: { in: saleIds } } });
-      await db.receipt.deleteMany({ where: { saleId: { in: saleIds } } });
-      await db.customerPayment.deleteMany({ where: { saleId: { in: saleIds } } });
-      await db.sale.deleteMany({ where: { id: { in: saleIds } } });
-    }
+    const { deleteSaleGraph } = await import("@/lib/hard-delete");
+    for (const id of saleIds) if (await db.sale.findUnique({ where: { id } })) await db.$transaction((tx) => deleteSaleGraph(tx, id), { timeout: 30_000 });
     await db.customerChange.deleteMany({ where: { customer: { createdById: userId } } });
     await db.customer.deleteMany({ where: { createdById: userId } });
     await db.userRole.deleteMany({ where: { userId: { in: [userId, ...extraUserIds] } } });
@@ -93,10 +86,12 @@ describe("Expediente con PostgreSQL real", () => {
     let candidate = 1;
     while (candidate < 10000 && await db.sale.findUnique({ where: { number: String(candidate).padStart(4, "0") }, select: { id: true } })) candidate++;
     orderNumber = String(candidate).padStart(4, "0");
-    const input = { customerId, orderNumber, destination: "Cancún", serviceType: "HOTEL", startsAt: "", endsAt: "", total: 8_000_000, initialPayment: 2_000_000, paymentMethod: "TRANSFERENCIA", requestId: crypto.randomUUID() };
+    const input = { customerId, orderNumber, destination: "Cancún", services: ["VUELO", "HOTEL"], notes: "Vuelo y hotel para 2 pasajeros", startsAt: "", endsAt: "", total: 8_000_000, initialPayment: 2_000_000, paymentMethod: "TRANSFERENCIA", requestId: crypto.randomUUID() };
     const first = await salePOST(body(input)); expect(first.status).toBe(201);
     saleId = (await first.json()).id;
     expect((await db.sale.findUniqueOrThrow({ where: { id: saleId } })).number).toBe(orderNumber);
+    expect((await db.sale.findUniqueOrThrow({ where: { id: saleId } })).serviceType).toBeNull();
+    expect((await db.service.findMany({ where: { saleId }, orderBy: { type: "asc" } })).map((service) => service.type)).toEqual(["HOTEL", "VUELO"]);
     const replay = await salePOST(body(input)); expect(replay.status).toBe(200); expect((await replay.json()).id).toBe(saleId);
     expect(await db.sale.count({ where: { id: saleId } })).toBe(1);
     const initial = await saleGET(new Request("http://localhost:3000/api/sales/" + saleId), { params: Promise.resolve({ id: saleId }) });
@@ -106,10 +101,17 @@ describe("Expediente con PostgreSQL real", () => {
     const paymentId = initialData.sale.payments[0].id;
     const premature = await registerPOST(new Request("http://localhost:3000/api/sales/" + saleId + "/register", { method: "POST", headers: { origin: "http://localhost:3000" } }), { params: Promise.resolve({ id: saleId }) });
     expect(premature.status).toBe(422);
-    const edit = { version: 1, destination: "Cancún", startsAt: "2026-11-15", endsAt: "2026-11-20", customerDueAt: "2026-11-30", total: 8_000_000 };
+    const edit = { version: 1, destination: "Cancún", notes: "Actualizado en borrador", services: ["VUELO", "HOTEL", "TRASLADO"], startsAt: "2026-11-15", endsAt: "2026-11-20", customerDueAt: "2026-11-30", total: 8_000_000 };
     const editRequest = () => new Request("http://localhost:3000/api/sales/" + saleId, { method: "PATCH", headers: { origin: "http://localhost:3000", "content-type": "application/json" }, body: JSON.stringify(edit) });
     const [one, two] = await Promise.all([salePATCH(editRequest(), { params: Promise.resolve({ id: saleId }) }), salePATCH(editRequest(), { params: Promise.resolve({ id: saleId }) })]);
     expect([one.status, two.status].sort()).toEqual([200, 409]);
+    expect(await db.service.count({ where: { saleId } })).toBe(3);
+    expect((await db.sale.findUniqueOrThrow({ where: { id: saleId } })).notes).toBe("Actualizado en borrador");
+    const hotelService = await db.service.findFirstOrThrow({ where: { saleId, type: "HOTEL" } });
+    await db.reservation.create({ data: { serviceId: hotelService.id, locator: "PRUEBA123" } });
+    const removeConfigured = await salePATCH(new Request(`http://localhost:3000/api/sales/${saleId}`, { method: "PATCH", headers: { origin: "http://localhost:3000", "content-type": "application/json" }, body: JSON.stringify({ ...edit, version: 2, services: ["VUELO", "TRASLADO"] }) }), { params: Promise.resolve({ id: saleId }) });
+    expect(removeConfigured.status).toBe(409);
+    expect(await db.service.count({ where: { id: hotelService.id } })).toBe(1);
     auth.actor.roles = [RoleCode.CONTABILIDAD];
     expect((await validatePOST(body({ action: "VALIDAR", version: 1 }), { params: Promise.resolve({ id: paymentId }) })).status).toBe(422);
     expect((await db.customerPayment.findUniqueOrThrow({ where: { id: paymentId } })).status).toBe("REPORTADO");
@@ -189,10 +191,10 @@ describe("Expediente con PostgreSQL real", () => {
     expect((await orderRequest(replacement, sale.version)).status).toBe(409);
     expect(await db.auditLog.count({ where: { entity: "Sale", entityId: saleId, action: "CORREGIR_OS" } })).toBe(1);
     auth.actor.roles = [RoleCode.ASESOR];
-    const reused = await salePOST(body({ customerId, orderNumber, destination: "Cartagena", serviceType: "HOTEL", startsAt: "", endsAt: "", total: 1_000_000, initialPayment: 0, requestId: crypto.randomUUID() }));
+    const reused = await salePOST(body({ customerId, orderNumber, destination: "Cartagena", services: ["HOTEL"], startsAt: "", endsAt: "", total: 1_000_000, initialPayment: 0, requestId: crypto.randomUUID() }));
     expect(reused.status).toBe(201);
     extraSaleIds.push((await reused.json()).id);
-    const blocked = await salePOST(body({ customerId, orderNumber, destination: "Bogotá", serviceType: "VUELO", startsAt: "", endsAt: "", total: 1_000_000, initialPayment: 0, requestId: crypto.randomUUID() }));
+    const blocked = await salePOST(body({ customerId, orderNumber, destination: "Bogotá", services: ["VUELO"], startsAt: "", endsAt: "", total: 1_000_000, initialPayment: 0, requestId: crypto.randomUUID() }));
     expect(blocked.status).toBe(409);
 
     const secondSaleId = extraSaleIds.at(-1)!;

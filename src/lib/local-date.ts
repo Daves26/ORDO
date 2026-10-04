@@ -18,3 +18,9 @@ export function fromIsoDate(value: string | null | undefined) {
   const iso = value.slice(0, 10);
   return /^\d{4}-\d{2}-\d{2}$/.test(iso) ? `${iso.slice(8, 10)}/${iso.slice(5, 7)}/${iso.slice(0, 4)}` : "";
 }
+
+export function addDaysIsoDate(iso: string, days: number) {
+  const date = new Date(`${iso}T00:00:00.000Z`);
+  date.setUTCDate(date.getUTCDate() + days);
+  return date.toISOString().slice(0, 10);
+}

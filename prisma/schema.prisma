@@ -56,6 +56,15 @@ enum TaskStatus {
   CANCELADA
 }
 
+enum LocatorSource {
+  MAYORISTA
+  PROVEEDOR
+  AEROLINEA
+  HOTEL
+  ASISTENCIA_MEDICA
+  OTRO
+}
+
 model User {
   id            String    @id @default(uuid()) @db.Uuid
   name          String
@@ -72,6 +81,7 @@ model User {
   reportedPayments CustomerPayment[] @relation("PaymentReporter")
   assignedTasks Task[] @relation("TaskAssignee")
   paymentCorrections PaymentAmountCorrection[]
+  createdLocators SaleLocator[]
 }
 
 model Role {
@@ -190,7 +200,8 @@ model Sale {
   customerId     String @db.Uuid
   advisorId      String @db.Uuid
   destination    String
-  serviceType    String
+  // Legacy category kept for older orders; new sales use Service[] as source of truth.
+  serviceType    String?
   startsAt       DateTime? @db.Date
   endsAt         DateTime? @db.Date
   total          Decimal @db.Decimal(16, 2)
@@ -207,6 +218,7 @@ model Sale {
   advisor        User @relation("SaleAdvisor", fields: [advisorId], references: [id])
   passengers     SalePassenger[]
   services       Service[]
+  locators       SaleLocator[]
   payments       CustomerPayment[]
   tasks          Task[]
   documents      Document[]
@@ -250,6 +262,7 @@ model Service {
   sale            Sale @relation(fields: [saleId], references: [id])
   supplier        Supplier? @relation(fields: [supplierId], references: [id])
   reservations    Reservation[]
+  locators        SaleLocator[]
   payables        SupplierPayable[]
   @@index([saleId])
 }
@@ -261,6 +274,25 @@ model Reservation {
   status    ReservationStatus @default(POR_RESERVAR)
   createdAt DateTime @default(now())
   service   Service @relation(fields: [serviceId], references: [id])
+}
+
+model SaleLocator {
+  id          String @id @default(uuid()) @db.Uuid
+  saleId      String @db.Uuid
+  serviceId   String? @db.Uuid
+  source      LocatorSource
+  issuerName  String?
+  code        String
+  notes       String?
+  createdById String @db.Uuid
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+  version     Int @default(1)
+  sale        Sale @relation(fields: [saleId], references: [id])
+  service     Service? @relation(fields: [serviceId], references: [id])
+  createdBy   User @relation(fields: [createdById], references: [id])
+  @@index([saleId, createdAt])
+  @@index([serviceId])
 }
 
 model CustomerPayment {

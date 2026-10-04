@@ -2,7 +2,7 @@
 
 ## Objetivo y flujo
 
-El expediente `Sale` reúne al cliente maestro, pasajeros independientes, servicios, cobros, obligaciones, documentos, tareas y eventos. Una venta nace `BORRADOR`; su creación exige cliente, asesor y **OS real de cuatro dígitos**, incluso si todavía faltan datos para registrarla comercialmente. Registrar la venta exige servicio, precio y fechas aplicables. Un abono reportado no reduce el saldo contable hasta que contabilidad lo valide.
+El expediente `Sale` reúne al cliente maestro, pasajeros independientes, servicios, cobros, obligaciones, documentos, tareas y eventos. Una venta nace `BORRADOR`; su creación exige cliente, asesor, **OS real de cuatro dígitos y al menos un servicio incluido**, incluso si todavía faltan datos para registrarla comercialmente. Registrar la venta exige precio y fechas aplicables. Un abono reportado no reduce el saldo contable hasta que contabilidad lo valide.
 
 ```mermaid
 flowchart LR
@@ -24,9 +24,11 @@ flowchart LR
 - Todos los cobros a clientes y pagos a proveedores son en **COP**. Una cotización extranjera, si existe, es informativa: el valor exigible es el COP acordado.
 - La gerente puede actuar como asesora con idéntico flujo. `ADMINISTRADOR` es un superusuario de soporte con acceso a las funciones operativas existentes incluso sobre ventas ajenas; su autoría y el asesor responsable se registran por separado cuando crea ventas para otra persona.
 - Cliente y pasajero son distintos; documentos emitidos conservan snapshot histórico.
-- El saldo contable = total de venta menos pagos `VALIDADO` no anulados. El saldo proyectado también descuenta `REPORTADO`, claramente identificado. Nunca se sobrescriben movimientos.
+- El saldo contable = total de venta menos pagos `VALIDADO` no anulados. El saldo proyectado también descuenta `REPORTADO`, claramente identificado. Las correcciones de importe conservan el valor anterior y el nuevo en `PaymentAmountCorrection`, salvo en un borrado definitivo de superusuario, que también elimina ese historial.
 - Cada abono validado nuevo referencia un **recibo de caja (RC) único**, emitido en el sistema contable. El RC no se genera en esta aplicación: contabilidad lo indica y confirma viendo importe y número antes de validar. Todo se persiste en una transacción y el saldo solo cambia tras ella. Pagos históricos sin RC permanecen identificados para conciliación, sin números inventados.
-- El asesor escribe la OS real como cuatro dígitos, por ejemplo `0123`; la interfaz muestra `OS 0123`. La unicidad es global, sin reinicio anual. Solo contabilidad puede corregirla con motivo, confirmación y auditoría. La OS anterior puede utilizarse en otra venta cuando ya no esté asignada. Los códigos VEN históricos se preservan hasta obtener su OS verdadera.
+- El asesor escribe la OS real como cuatro dígitos, por ejemplo `0123`; la interfaz muestra `OS 0123`. La unicidad es global, sin reinicio anual. Contabilidad y el superusuario pueden corregirla con motivo, confirmación y auditoría. La OS anterior puede utilizarse en otra venta cuando ya no esté asignada. Los códigos VEN históricos se preservan hasta obtener su OS verdadera.
+- Una OS nueva selecciona uno o varios servicios de Vuelos, Hotel, Traslados, Asistencia médica, Tours u Otro. Cada selección crea un `Service` POR_RESERVAR sin costos o proveedores asumidos; `Sale.serviceType` queda reservado como categoría histórica opcional. `Sale.notes` contiene las observaciones generales y es obligatorio en creación si se elige Otro. No se inventa el desglose de órdenes históricas con categoría PAQUETE. La corrección de servicios en un borrador no puede retirar servicios que ya tengan información operativa o compromisos.
+- Cada OS puede tener muchos localizadores independientes (`SaleLocator`), clasificados por origen/emisor, con vínculo opcional a `Service`. Su código conserva la escritura original y admite duplicados en otros emisores. El autor puede corregir los que registró si aún tiene acceso a la OS; back office y el superusuario pueden corregir cualquiera, con valor previo y nuevo auditados. El asesor añade en sus ventas; los demás roles operativos añaden en las OS a las que pueden acceder.
 - Contabilidad corrige el importe de un abono `REPORTADO` o `VALIDADO` mediante un flujo con motivo y confirmación. Si ya hay recibo, su valor se corrige en la misma transacción y su número permanece; `PaymentAmountCorrection` conserva importes previos y nuevos. El saldo se recalcula desde los pagos validados. No se captura «Referencia» en pagos nuevos; el dato de pagos históricos se conserva.
 - El superusuario puede borrar físicamente, bajo confirmación escrita, un abono junto con su recibo, una OS con sus datos dependientes o un cliente con sus ventas. No se exige resolver pagos antes de este borrado del superusuario; la acción borra también las entradas de auditoría relacionadas y no crea otra. Las restricciones de unicidad dejan libres los números eliminados. Las demás funciones financieras conservan sus reglas normales.
 - Una obligación proveedor solo nace con proveedor, costo COP y fecha de pago definidos. Una reserva aún sin esos datos continúa pendiente de completar.
@@ -60,7 +62,7 @@ flowchart LR
 | Auditoría global | No | No | Finanzas | Sí | Toda la información aún existente |
 | Configuración técnica | No | No | No | Política autorizada | Sí |
 
-Los permisos se comprueban en el servidor y también contra la asignación de la venta. El primer incremento implementa login, acceso a clientes, venta propia y abono reportado; el resto de la matriz define los siguientes incrementos.
+Los permisos se comprueban en el servidor y también contra la asignación de la venta, salvo en el acceso explícito del superusuario a expedientes ajenos. La matriz incluye capacidades futuras; el estado de las funciones ya operativas está en [funcionalidades implementadas](incremento-01.md).
 
 `ADMINISTRADOR` puede asignar y retirar roles propios y ajenos con motivo y auditoría, ver clientes y ventas de cualquier asesor y ejecutar acciones comerciales y contables existentes. Al menos un administrador activo debe conservar ese rol. Se usan versiones y transacciones serializables para evitar sobrescrituras y retirar accidentalmente los dos últimos administradores en paralelo. Solo el rol ADMINISTRADOR accede a los endpoints de borrado definitivo.
 
@@ -76,7 +78,7 @@ Los permisos se comprueban en el servidor y también contra la asignación de la
 
 ## Validaciones y duplicados
 
-Documento normalizado + tipo + país único en base de datos y coincidencia exacta bloqueante en UI. Teléfono/correo coincidentes generan candidatos de advertencia. Fecha regreso >= salida; precio y abono positivos; abono <= saldo considerando también reportes pendientes; correo válido; moneda COP; validación distinta por etapa. Ediciones usan `version` para detectar conflictos. La API valida de nuevo cada regla. Claves de idempotencia previenen doble creación.
+Documento normalizado + tipo + país único en base de datos y coincidencia exacta bloqueante en UI. Teléfono/correo coincidentes generan candidatos de advertencia. Fecha de regreso **posterior** a salida; precio y abono positivos; abono <= saldo considerando también reportes pendientes; correo válido; moneda COP; validación distinta por etapa. Ediciones usan `version` para detectar conflictos. La API valida de nuevo cada regla. Claves de idempotencia previenen doble creación.
 
 Al validar un abono, la API exige número de recibo no vacío **formado solo por dígitos**, preserva ceros iniciales, confirma la versión del importe mostrado y crea `Receipt` vinculado uno a uno con `CustomerPayment`. Índices únicos impiden utilizar el mismo número o vincular dos recibos al mismo abono. Rechazar el abono exige motivo y no crea recibo. La OS se valida en backend y en la base de datos; contabilidad y el superusuario pueden cambiarla. Las correcciones de importe deben mantenerse dentro del total de la venta, considerando todos los pagos reportados y validados.
 
@@ -84,7 +86,7 @@ El borrado definitivo comprueba rol explícito, identificador escrito exactament
 
 ## UX y navegación
 
-Captura rápida: cliente existente o nuevo → OS real → destino → tipo de servicio → fechas → total COP → abono opcional → Crear venta. Asesor y fecha se infieren de sesión. Expediente: resumen con requisitos faltantes, pasajeros, servicios, cartera, proveedores, documentos, tareas y actividad. Contabilidad ve acciones para corregir OS e importes con una vista previa antes de confirmar. `Tab` sigue orden visual; autocompletado usa ↑/↓/Enter/Escape; `Ctrl+K` búsqueda, `Ctrl+N` nueva venta, `Ctrl+S` borrador y `Ctrl+Enter` acción primaria. Dashboards por rol muestran primero tareas y excepciones. El diseño Corporate Trust aplica a toda la aplicación; efectos decorativos no interfieren en formularios ni datos financieros.
+Captura rápida: cliente existente o nuevo → OS real → destino → selección múltiple de servicios → observaciones de la OS → fechas → total COP → abono opcional → Crear venta. Asesor y fecha se infieren de sesión. Salida y regreso pueden teclearse en `DD/MM/AAAA` o elegirse en el calendario; al elegir salida con el calendario se abre regreso limitado a días posteriores. Expediente: resumen con requisitos faltantes, servicios, localizadores de distintos emisores, observaciones, cartera, tareas y actividad. Contabilidad ve acciones para corregir OS e importes con una vista previa antes de confirmar. `Tab` sigue orden visual; autocompletado usa ↑/↓/Enter/Escape; `Ctrl+K` búsqueda, `Ctrl+N` nueva venta, `Ctrl+S` borrador y `Ctrl+Enter` acción primaria. Dashboards por rol muestran primero tareas y excepciones. El diseño Corporate Trust aplica a toda la aplicación; efectos decorativos no interfieren en formularios ni datos financieros.
 
 ## Técnica y riesgos
 
