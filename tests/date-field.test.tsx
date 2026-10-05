@@ -72,3 +72,25 @@ it("al seleccionar salida a fin de año abre regreso en el mes siguiente", () =>
   fireEvent.click(screen.getByRole("button", { name: "viernes, 1 de enero de 2027" }));
   expect((screen.getByLabelText("Regreso") as HTMLInputElement).value).toBe("01/01/2027");
 });
+
+it("el campo de pago acepta escritura y selección en el calendario", () => {
+  vi.stubGlobal("requestAnimationFrame", (callback: FrameRequestCallback) => window.setTimeout(() => callback(0), 0));
+  function PaymentDate() {
+    const [value, setValue] = useState("10/02/2027");
+    return <DateField id="payment-date" label="Pago máximo del cliente" value={value} onChange={setValue} />;
+  }
+  render(<PaymentDate />);
+  const input = screen.getByLabelText("Pago máximo del cliente") as HTMLInputElement;
+  fireEvent.change(input, { target: { value: "11022027" } });
+  expect(input.value).toBe("11/02/2027");
+  expect(screen.queryByRole("dialog")).toBeNull();
+  fireEvent.click(input);
+  fireEvent.click(screen.getByRole("button", { name: /12 de febrero de 2027/i }));
+  expect(input.value).toBe("12/02/2027");
+});
+
+it("no abre el calendario cuando el campo está deshabilitado", () => {
+  render(<DateField id="readonly-date" label="Fecha de solicitud" value="" onChange={() => {}} disabled />);
+  fireEvent.click(screen.getByLabelText("Fecha de solicitud"));
+  expect(screen.queryByRole("dialog")).toBeNull();
+});

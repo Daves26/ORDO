@@ -6,10 +6,10 @@ import { formatDateInput, fromIsoDate, toIsoDate } from "@/lib/local-date";
 type Props = {
   id: string; label: string; value: string; onChange: (display: string) => void;
   calendar?: boolean; calendarOpen?: boolean; onCalendarOpenChange?: (open: boolean) => void;
-  minIsoDate?: string; onCalendarSelect?: (iso: string) => void;
+  minIsoDate?: string; onCalendarSelect?: (iso: string) => void; disabled?: boolean; required?: boolean;
 };
 
-export function DateField({ id, label, value, onChange, calendar = false, calendarOpen, onCalendarOpenChange, minIsoDate, onCalendarSelect }: Props) {
+export function DateField({ id, label, value, onChange, calendar = true, calendarOpen, onCalendarOpenChange, minIsoDate, onCalendarSelect, disabled = false, required = false }: Props) {
   const [touched, setTouched] = useState(false);
   const [ownOpen, setOwnOpen] = useState(false);
   const wrapper = useRef<HTMLDivElement>(null);
@@ -31,7 +31,7 @@ export function DateField({ id, label, value, onChange, calendar = false, calend
   }, [open, calendarOpen, onCalendarOpenChange]);
 
   return <div ref={wrapper} className="field"><label htmlFor={id}>{label}</label>
-    <input ref={inputRef} id={id} type="text" inputMode="numeric" autoComplete="off" placeholder="DD/MM/AAAA" maxLength={10} aria-invalid={invalid || undefined} aria-describedby={invalid ? messageId : undefined} aria-haspopup={calendar ? "dialog" : undefined} aria-expanded={calendar ? open : undefined} value={value} onClick={() => { if (calendar) setOpen(true); }} onBlur={() => setTouched(true)} onChange={(event) => {
+    <input ref={inputRef} id={id} type="text" inputMode="numeric" autoComplete="off" placeholder="DD/MM/AAAA" maxLength={10} disabled={disabled} required={required} aria-invalid={invalid || undefined} aria-describedby={invalid ? messageId : undefined} aria-haspopup={calendar ? "dialog" : undefined} aria-expanded={calendar ? open : undefined} value={value} onClick={(event) => { if (calendar && !event.currentTarget.matches(":disabled")) setOpen(true); }} onBlur={() => setTouched(true)} onChange={(event) => {
       const input = event.currentTarget;
       const before = input.value.slice(0, input.selectionStart ?? input.value.length).replace(/\D/g, "").length;
       const formatted = formatDateInput(input.value);

@@ -2,6 +2,8 @@
 import { useCallback, useEffect, useState, type FormEvent } from "react";
 import { date, money } from "@/lib/format";
 import { serviceLabel } from "@/lib/service-types";
+import { DateField } from "@/components/date-field";
+import { fromIsoDate, toIsoDate } from "@/lib/local-date";
 
 type Person = { id: string; firstName: string; lastName: string; documentType: string | null; documentNumber: string | null; birthDate: string | null; passportNumber: string | null; passportExpiry: string | null };
 type Segment = { airline: string; departureDate: string; arrivalDate: string; origin: string; destination: string; departureTime: string; arrivalTime: string; cabinClass: string };
@@ -13,7 +15,8 @@ type Order = { id: string; version: number; number: string; total?: string; cust
   passengers: { passenger: Person }[]; services: Service[]; priceLines?: Price[] };
 const blankPassenger = (): Person => ({ id: "", firstName: "", lastName: "", documentType: null, documentNumber: null, birthDate: "", passportNumber: null, passportExpiry: "" });
 const blankSegment = (): Segment => ({ airline: "", departureDate: "", arrivalDate: "", origin: "", destination: "", departureTime: "", arrivalTime: "", cabinClass: "" });
-const iso = (value: string | null | undefined) => value?.slice(0, 10) ?? "";
+const validDates = (values: string[]) => values.every((value) => !value || !!toIsoDate(value));
+const dateError = "Revisa las fechas: usa DD/MM/AAAA y comprueba que el día exista.";
 const safeError = (result: { error?: string; details?: { fieldErrors?: Record<string, string[]> } }) => result.details?.fieldErrors ? Object.values(result.details.fieldErrors).flat().join(" · ") || result.error : result.error;
 
 export function SaleOrderDetails({ saleId, saleVersion, canEditCommercial, canEditOperational, canViewFinancial, saved }: {
@@ -62,54 +65,59 @@ export function SaleOrderDetails({ saleId, saleVersion, canEditCommercial, canEd
 
 function PeopleSection({ sale, editable, save }: { sale: Order; editable: boolean; save: (fields: object) => Promise<boolean> }) {
   const customerName = `${sale.customer.firstName} ${sale.customer.lastName}`;
-  const [fields, setFields] = useState({ requestedAt: iso(sale.requestedAt), contactName: sale.contactName ?? "", holderName: sale.holderName ?? "",
+  const [fields, setFields] = useState({ requestedAt: fromIsoDate(sale.requestedAt), contactName: sale.contactName ?? "", holderName: sale.holderName ?? "",
     billingName: sale.billingName ?? "", billingDocument: sale.billingDocument ?? "", billingPhone: sale.billingPhone ?? "", billingAddress: sale.billingAddress ?? "", billingCity: sale.billingCity ?? "" });
   const [busy, setBusy] = useState(false);
-  async function submit(event: FormEvent) { event.preventDefault(); setBusy(true); await save(fields); setBusy(false); }
+  const [error, setError] = useState("");
+  async function submit(event: FormEvent) { event.preventDefault(); if (!validDates([fields.requestedAt])) { setError(dateError); return; } setError(""); setBusy(true); await save({ ...fields, requestedAt: fields.requestedAt ? toIsoDate(fields.requestedAt) : "" }); setBusy(false); }
   return <form onSubmit={submit}><h3>Contacto, titular y facturación</h3><p className="muted small">Cliente: {customerName}. Deja los campos de facturación vacíos si son iguales a su ficha; lo emitido conserva una copia de estos datos.</p>
     <div className="form-grid">
-      <div className="field"><label htmlFor="os-requested">Fecha de solicitud</label><input id="os-requested" type="date" value={fields.requestedAt} onChange={(event) => setFields({ ...fields, requestedAt: event.target.value })} disabled={!editable || busy} /></div>
+      <DateField id="os-requested" label="Fecha de solicitud" value={fields.requestedAt} onChange={(value) => setFields({ ...fields, requestedAt: value })} disabled={!editable || busy} />
       {([ ["contactName", "Contacto", customerName], ["holderName", "Titular de la reserva", customerName], ["billingName", "Facturar a", sale.customer.billingName ?? customerName],
         ["billingDocument", "NIT o CC para facturación", sale.customer.billingDocument ?? sale.customer.documentNumber ?? ""], ["billingPhone", "Teléfono de facturación", sale.customer.phone],
         ["billingAddress", "Dirección de facturación", sale.customer.address ?? ""], ["billingCity", "Ciudad de facturación", sale.customer.city ?? ""] ] as const).map(([key, label, fallback]) => <div className="field" key={key}>
         <label htmlFor={`os-${key}`}>{label}</label><input id={`os-${key}`} value={fields[key]} onChange={(event) => setFields({ ...fields, [key]: event.target.value })} placeholder={fallback} maxLength={key === "billingAddress" ? 200 : 150} disabled={!editable || busy} /></div>)}
-    </div>{editable && <div className="form-actions"><button className="btn" disabled={busy}>{busy ? "Guardando…" : "Guardar personas y facturación"}</button></div>}
+    </div>{error && <p role="alert" className="field-error">{error}</p>}{editable && <div className="form-actions"><button className="btn" disabled={busy}>{busy ? "Guardando…" : "Guardar personas y facturación"}</button></div>}
   </form>;
 }
 
 function PassengerSection({ passengers, editable, save }: { passengers: Person[]; editable: boolean; save: (items: object[]) => Promise<boolean> }) {
-  const [items, setItems] = useState<Person[]>(passengers.map((person) => ({ ...person, birthDate: iso(person.birthDate), passportExpiry: iso(person.passportExpiry) })));
+  const [items, setItems] = useState<Person[]>(passengers.map((person) => ({ ...person, birthDate: fromIsoDate(person.birthDate), passportExpiry: fromIsoDate(person.passportExpiry) })));
   const [busy, setBusy] = useState(false);
-  async function submit(event: FormEvent) { event.preventDefault(); setBusy(true); await save(items.map((item) => ({ ...item, id: item.id || undefined }))); setBusy(false); }
+  const [error, setError] = useState("");
+  async function submit(event: FormEvent) { event.preventDefault(); if (!validDates(items.flatMap((item) => [item.birthDate ?? "", item.passportExpiry ?? ""]))) { setError(dateError); return; } setError(""); setBusy(true); await save(items.map((item) => ({ ...item, id: item.id || undefined, birthDate: item.birthDate ? toIsoDate(item.birthDate) : "", passportExpiry: item.passportExpiry ? toIsoDate(item.passportExpiry) : "" }))); setBusy(false); }
   return <form onSubmit={submit} style={{ marginTop: 28, borderTop: "1px solid var(--border)", paddingTop: 16 }}><h3>Datos de los pasajeros</h3>
     <p className="muted small">Un pasajero con el mismo tipo y número de documento se reutiliza entre órdenes. El comprador no se agrega automáticamente como pasajero.</p>
     {items.map((item, index) => <fieldset key={item.id || `nuevo-${index}`} disabled={!editable || busy} style={{ border: "1px solid var(--border)", borderRadius: 8, padding: 14, marginTop: 12 }}>
       <legend>Pasajero {index + 1}</legend><div className="form-grid">
         {([ ["firstName", "Nombres *"], ["lastName", "Apellidos *"], ["documentType", "Tipo de identificación"], ["documentNumber", "Identificación"], ["passportNumber", "N.º de pasaporte"] ] as const).map(([key, label]) => <div className="field" key={key}><label htmlFor={`pass-${key}-${index}`}>{label}</label><input id={`pass-${key}-${index}`} value={item[key] ?? ""} required={key === "firstName" || key === "lastName"} maxLength={100} onChange={(event) => setItems(items.map((entry, i) => i === index ? { ...entry, [key]: event.target.value } : entry))} /></div>)}
-        {([ ["birthDate", "Fecha de nacimiento"], ["passportExpiry", "Vencimiento de pasaporte"] ] as const).map(([key, label]) => <div className="field" key={key}><label htmlFor={`pass-${key}-${index}`}>{label}</label><input id={`pass-${key}-${index}`} type="date" value={item[key] ?? ""} onChange={(event) => setItems(items.map((entry, i) => i === index ? { ...entry, [key]: event.target.value } : entry))} /></div>)}
+        {([ ["birthDate", "Fecha de nacimiento"], ["passportExpiry", "Vencimiento de pasaporte"] ] as const).map(([key, label]) => <DateField key={key} id={`pass-${key}-${index}`} label={label} value={item[key] ?? ""} onChange={(value) => setItems(items.map((entry, i) => i === index ? { ...entry, [key]: value } : entry))} />)}
       </div>{editable && <button type="button" className="btn btn-danger" onClick={() => setItems(items.filter((_, i) => i !== index))}>Quitar de la OS</button>}
     </fieldset>)}
     {!items.length && <p className="muted">Todavía no se registraron pasajeros.</p>}
+    {error && <p role="alert" className="field-error">{error}</p>}
     {editable && <div className="form-actions"><button type="button" className="btn" onClick={() => setItems([...items, blankPassenger()])}>Añadir pasajero</button><button className="btn btn-primary" disabled={busy}>{busy ? "Guardando…" : "Guardar pasajeros"}</button></div>}
   </form>;
 }
 
 function ServiceSection({ service, suppliers, editable, save, createSupplier }: { service: Service; suppliers: { id: string; name: string }[]; editable: boolean; save: (fields: object) => Promise<boolean>; createSupplier: (name: string) => Promise<{ id: string; name: string } | null> }) {
   const [fields, setFields] = useState({ supplierId: service.supplierId ?? "", route: service.route ?? "", planType: service.planType ?? "", baggage: service.baggage ?? "", transportCompany: service.transportCompany ?? "", hotelName: service.hotelName ?? "" });
-  const [segments, setSegments] = useState<Segment[]>(service.flightSegments.map((item) => ({ ...item, departureDate: iso(item.departureDate), arrivalDate: iso(item.arrivalDate), cabinClass: item.cabinClass ?? "" })));
+  const [segments, setSegments] = useState<Segment[]>(service.flightSegments.map((item) => ({ ...item, departureDate: fromIsoDate(item.departureDate), arrivalDate: fromIsoDate(item.arrivalDate), cabinClass: item.cabinClass ?? "" })));
   const [supplierName, setSupplierName] = useState("");
   const [busy, setBusy] = useState(false);
-  async function submit(event: FormEvent) { event.preventDefault(); setBusy(true); await save({ ...fields, supplierId: fields.supplierId || null, segments }); setBusy(false); }
+  const [error, setError] = useState("");
+  async function submit(event: FormEvent) { event.preventDefault(); if (!validDates(segments.flatMap((segment) => [segment.departureDate, segment.arrivalDate]))) { setError(dateError); return; } setError(""); setBusy(true); await save({ ...fields, supplierId: fields.supplierId || null, segments: segments.map((segment) => ({ ...segment, departureDate: segment.departureDate ? toIsoDate(segment.departureDate) : "", arrivalDate: segment.arrivalDate ? toIsoDate(segment.arrivalDate) : "" })) }); setBusy(false); }
   return <form onSubmit={submit} style={{ borderTop: "1px solid var(--border)", paddingTop: 16, marginTop: 16 }}><h4>{serviceLabel(service.type)}</h4>
     <div className="form-grid"><div className="field"><label htmlFor={`supplier-${service.id}`}>Emitido por · proveedor</label><select id={`supplier-${service.id}`} value={fields.supplierId} disabled={!editable || busy} onChange={(event) => setFields({ ...fields, supplierId: event.target.value })}><option value="">Sin proveedor aún</option>{suppliers.map((supplier) => <option key={supplier.id} value={supplier.id}>{supplier.name}</option>)}</select></div>
       {([ ["route", "Ruta", ["VUELO", "TRASLADO", "TOUR", "OTRO"]], ["planType", "Tipo de plan", ["HOTEL", "TOUR", "ASISTENCIA_MEDICA", "OTRO"]], ["baggage", "Equipaje", ["VUELO", "OTRO"]], ["transportCompany", "Empresa de transporte", ["VUELO", "TRASLADO", "OTRO"]], ["hotelName", "Hotel", ["HOTEL", "OTRO"]] ] as const).filter(([, , types]) => types.some((type) => type === service.type)).map(([key, label]) => <div className="field" key={key}><label htmlFor={`${key}-${service.id}`}>{label}</label><input id={`${key}-${service.id}`} value={fields[key]} disabled={!editable || busy} maxLength={200} onChange={(event) => setFields({ ...fields, [key]: event.target.value })} /></div>)}
     </div>
     {editable && <div className="form-grid" style={{ marginTop: 12 }}><div className="field"><label htmlFor={`new-supplier-${service.id}`}>¿Falta el proveedor? Créalo por nombre</label><input id={`new-supplier-${service.id}`} value={supplierName} onChange={(event) => setSupplierName(event.target.value)} maxLength={150} /></div><button type="button" className="btn" style={{ alignSelf: "end" }} disabled={busy || supplierName.trim().length < 2} onClick={async () => { setBusy(true); try { const created = await createSupplier(supplierName); if (created) { setFields({ ...fields, supplierId: created.id }); setSupplierName(""); } } finally { setBusy(false); } }}>Crear proveedor</button></div>}
     {service.type === "VUELO" && <><h4 style={{ marginTop: 20 }}>Horario de vuelos · tramos</h4>{segments.map((segment, index) => <fieldset key={index} disabled={!editable || busy} style={{ border: "1px solid var(--border)", borderRadius: 8, padding: 14, marginTop: 12 }}><legend>Tramo {index + 1}</legend><div className="form-grid">
-      {([ ["airline", "Aerolínea *"], ["origin", "Origen *"], ["destination", "Destino *"], ["departureDate", "Fecha de salida *"], ["departureTime", "Hora de salida *"], ["arrivalDate", "Fecha de llegada"], ["arrivalTime", "Hora de llegada *"], ["cabinClass", "Clase"] ] as const).map(([key, label]) => <div className="field" key={key}><label htmlFor={`flight-${key}-${service.id}-${index}`}>{label}</label><input id={`flight-${key}-${service.id}-${index}`} type={key.includes("Date") ? "date" : key.includes("Time") ? "time" : "text"} required={label.endsWith("*")} value={segment[key]} onChange={(event) => setSegments(segments.map((entry, i) => i === index ? { ...entry, [key]: event.target.value } : entry))} /></div>)}
+      {([ ["airline", "Aerolínea *"], ["origin", "Origen *"], ["destination", "Destino *"], ["departureDate", "Fecha de salida *"], ["departureTime", "Hora de salida *"], ["arrivalDate", "Fecha de llegada"], ["arrivalTime", "Hora de llegada *"], ["cabinClass", "Clase"] ] as const).map(([key, label]) => key === "departureDate" || key === "arrivalDate" ? <DateField key={key} id={`flight-${key}-${service.id}-${index}`} label={label} value={segment[key]} required={label.endsWith("*")} onChange={(value) => setSegments(segments.map((entry, i) => i === index ? { ...entry, [key]: value } : entry))} /> : <div className="field" key={key}><label htmlFor={`flight-${key}-${service.id}-${index}`}>{label}</label><input id={`flight-${key}-${service.id}-${index}`} type={key.includes("Time") ? "time" : "text"} required={label.endsWith("*")} value={segment[key]} onChange={(event) => setSegments(segments.map((entry, i) => i === index ? { ...entry, [key]: event.target.value } : entry))} /></div>)}
     </div>{editable && <button type="button" className="btn btn-danger" onClick={() => setSegments(segments.filter((_, i) => i !== index))}>Quitar tramo</button>}</fieldset>)}
       {editable && <button type="button" className="btn" style={{ marginTop: 12 }} onClick={() => setSegments([...segments, blankSegment()])}>Añadir tramo de vuelo</button>}
     </>}
+    {error && <p role="alert" className="field-error">{error}</p>}
     {editable && <div className="form-actions"><button className="btn btn-primary" disabled={busy}>{busy ? "Guardando…" : `Guardar ${serviceLabel(service.type).toLowerCase()}`}</button></div>}
   </form>;
 }
