@@ -4,6 +4,7 @@ import { z } from "zod";
 import { hasRole } from "@/lib/auth";
 import { db } from "@/lib/db";
 import { AppError, authorize, payload, respond } from "@/lib/http";
+import { invalidateReadModels } from "@/lib/invalidate-read-models";
 
 type Context = { params: Promise<{ id: string }> };
 const schema = z.object({
@@ -47,6 +48,7 @@ export async function PATCH(request: Request, { params }: Context) {
       await tx.auditLog.create({ data: { actorId: actor.id, entity: "CustomerPayment", entityId: id, action: "CORREGIR_VALOR", before: { amount: before.amount.toString(), receiptAmount: before.receipt?.amount.toString() ?? null }, after: { amount: payment.amount.toString(), receiptAmount: before.receipt ? payment.amount.toString() : null, receiptNumber: before.receipt?.number ?? null }, reason: input.reason } });
       return { payment, receiptNumber: before.receipt?.number ?? null };
     }, { isolationLevel: Prisma.TransactionIsolationLevel.Serializable, maxWait: 10_000, timeout: 10_000 });
+    invalidateReadModels();
     return NextResponse.json({ id: result.payment.id, amount: result.payment.amount.toString(), version: result.payment.version, receiptNumber: result.receiptNumber });
   } catch (error) { return respond(error); }
 }

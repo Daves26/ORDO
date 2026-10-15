@@ -1,9 +1,11 @@
 "use client";
 import { useRef, useState, type FormEvent } from "react";
-import { DeleteDialog } from "@/components/delete-dialog";
+import dynamic from "next/dynamic";
 import { date } from "@/lib/format";
 import { LOCATOR_SOURCES, locatorSourceLabel, type LocatorSourceCode } from "@/lib/locator-options";
 import { serviceLabel } from "@/lib/service-types";
+
+const DeleteDialog = dynamic(() => import("@/components/delete-dialog").then((module) => module.DeleteDialog), { ssr: false, loading: () => <div className="dialog-backdrop" role="status"><div className="dialog">Preparando confirmación…</div></div> });
 
 export type LocatorItem = {
   id: string; code: string; source: LocatorSourceCode; issuerName: string | null; serviceId: string | null;

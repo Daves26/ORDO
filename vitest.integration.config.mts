@@ -9,4 +9,4 @@ if (!testUrl || !mainUrl || !/(^|[_-])test($|[_-])/i.test(testUrl.pathname.slice
   throw new Error("Configura TEST_DATABASE_URL para una base de pruebas separada, cuyo nombre contenga '_test'.");
 }
 
-export default defineConfig({ test: { environment: "node", include: ["tests/**/*.integration.ts"], fileParallelism: false }, resolve: { alias: { "@": fileURLToPath(new URL("./src", import.meta.url)) } } });
+export default defineConfig({ test: { environment: "node", include: ["tests/**/*.integration.ts"], fileParallelism: false, setupFiles: ["./tests/setup-cache.ts"] }, resolve: { alias: { "@": fileURLToPath(new URL("./src", import.meta.url)) } } });

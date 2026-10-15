@@ -98,6 +98,14 @@ describe("Expediente con PostgreSQL real", () => {
     const initialData = await initial.json();
     expect(initialData).toMatchObject({ balance: 8_000_000, projectedBalance: 6_000_000, portfolioStatus: "PENDIENTE_VALIDACION" });
     expect(initialData.gaps).toEqual(["Fecha de salida", "Fecha de regreso"]);
+    expect(initialData.sale.passengers).toEqual([]);
+    auth.actor.roles = [RoleCode.BACK_OFFICE];
+    const operational = await saleGET(new Request(`http://localhost:3000/api/sales/${saleId}`), { params: Promise.resolve({ id: saleId }) });
+    const operationalData = await operational.json();
+    expect(operationalData.sale.total).toBeUndefined();
+    expect(operationalData.sale.payments).toEqual([]);
+    expect(operationalData.sale.passengers).toEqual([]);
+    auth.actor.roles = [RoleCode.ASESOR];
     const paymentId = initialData.sale.payments[0].id;
     const premature = await registerPOST(new Request("http://localhost:3000/api/sales/" + saleId + "/register", { method: "POST", headers: { origin: "http://localhost:3000" } }), { params: Promise.resolve({ id: saleId }) });
     expect(premature.status).toBe(422);

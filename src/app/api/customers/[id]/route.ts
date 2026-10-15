@@ -5,6 +5,7 @@ import { hasRole } from "@/lib/auth";
 import { db } from "@/lib/db";
 import { AppError, authorize, payload, respond } from "@/lib/http";
 import { customerFields, normalizeDocument, normalizePhone } from "@/lib/validation";
+import { invalidateReadModels } from "@/lib/invalidate-read-models";
 
 type Context = { params: Promise<{ id: string }> };
 
@@ -13,7 +14,7 @@ export async function GET(request: Request, { params }: Context) {
     const actor = await authorize(request, (user) => hasRole(user, RoleCode.ASESOR, RoleCode.GERENTE, RoleCode.CONTABILIDAD, RoleCode.BACK_OFFICE));
     const { id } = await params;
     const customer = await db.customer.findUnique({ where: { id }, include: {
-      sales: { select: { id: true, number: true, destination: true, commercialStatus: true, startsAt: true, total: true }, orderBy: { createdAt: "desc" } },
+      sales: { select: { id: true, number: true, destination: true, commercialStatus: true, startsAt: true, total: true }, orderBy: { createdAt: "desc" }, take: 20 },
       changes: { orderBy: { createdAt: "desc" }, take: 30 },
     } });
     if (!customer) throw new AppError(404, "Cliente no encontrado.");
@@ -56,6 +57,7 @@ export async function PATCH(request: Request, { params }: Context) {
       await tx.auditLog.create({ data: { actorId: actor.id, entity: "Customer", entityId: id, action: "ACTUALIZAR", before: changes && Object.fromEntries(Object.keys(changes).map((key) => [key, previous[key as keyof typeof previous]?.toString() ?? null])), after: changes } });
       return updated;
     });
+    invalidateReadModels();
     return NextResponse.json({ customer });
   } catch (error) { return respond(error); }
 }

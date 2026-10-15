@@ -1,14 +1,14 @@
 "use client";
-import { useCallback, useEffect, useState, type FormEvent } from "react";
+import { useCallback, useState, type FormEvent } from "react";
 import { useRouter } from "next/navigation";
 
 type User = { id: string; name: string; email: string; active: boolean; version: number; roles: { role: { code: string } }[] };
 const roles = ["ASESOR", "BACK_OFFICE", "CONTABILIDAD", "GERENTE", "ADMINISTRADOR"] as const;
 const codes = (user: User) => user.roles.map(({ role }) => role.code);
 
-export function UsersAdmin({ ownId }: { ownId: string }) {
+export function UsersAdmin({ ownId, initialUsers }: { ownId: string; initialUsers: User[] }) {
   const router = useRouter();
-  const [users, setUsers] = useState<User[]>([]);
+  const [users, setUsers] = useState<User[]>(initialUsers);
   const [selectedId, setSelectedId] = useState<string | null>(null);
   const [selectedRoles, setSelectedRoles] = useState<string[]>([]);
   const [reason, setReason] = useState("");
@@ -23,7 +23,6 @@ export function UsersAdmin({ ownId }: { ownId: string }) {
     const response = await fetch("/api/users");
     if (response.ok) setUsers((await response.json()).users);
   }, []);
-  useEffect(() => { void load(); }, [load]);
 
   function edit(user: User) {
     setSelectedId(user.id); setSelectedRoles(codes(user)); setRoleError(""); setReason(""); setMessage("");

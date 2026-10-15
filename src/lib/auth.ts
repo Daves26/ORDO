@@ -1,5 +1,6 @@
 import { createHmac, randomBytes } from "node:crypto";
 import { compare } from "bcryptjs";
+import { cache } from "react";
 import { cookies } from "next/headers";
 import { RoleCode } from "@prisma/client";
 import { db } from "@/lib/db";
@@ -19,7 +20,7 @@ function hash(value: string) {
 
 export type Actor = { id: string; name: string; email: string; roles: RoleCode[] };
 
-export async function currentUser(): Promise<Actor | null> {
+export const currentUser = cache(async (): Promise<Actor | null> => {
   const token = (await cookies()).get(cookieName)?.value;
   if (!token) return null;
   const session = await db.session.findUnique({
@@ -33,7 +34,7 @@ export async function currentUser(): Promise<Actor | null> {
     email: session.user.email,
     roles: session.user.roles.map(({ role }) => role.code),
   };
-}
+});
 
 export function hasRole(actor: Actor, ...roles: RoleCode[]) {
   return actor.roles.includes(RoleCode.ADMINISTRADOR) || roles.some((role) => actor.roles.includes(role));

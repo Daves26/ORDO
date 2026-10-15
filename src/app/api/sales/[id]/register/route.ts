@@ -4,6 +4,7 @@ import { hasRole } from "@/lib/auth";
 import { db } from "@/lib/db";
 import { AppError, authorize, respond } from "@/lib/http";
 import { registrationGaps } from "@/lib/validation";
+import { invalidateReadModels } from "@/lib/invalidate-read-models";
 
 type Context = { params: Promise<{ id: string }> };
 export async function POST(request: Request, { params }: Context) {
@@ -22,6 +23,7 @@ export async function POST(request: Request, { params }: Context) {
       await tx.auditLog.create({ data: { actorId: actor.id, entity: "Sale", entityId: id, action: "REGISTRAR", before: { commercialStatus: "BORRADOR" }, after: { commercialStatus: "REGISTRADA" } } });
       return result;
     });
+    invalidateReadModels();
     return NextResponse.json({ sale: updated });
   } catch (error) { return respond(error); }
 }

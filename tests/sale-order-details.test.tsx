@@ -6,77 +6,60 @@ import { addDaysIsoDate, fromIsoDate } from "@/lib/local-date";
 
 afterEach(() => { cleanup(); vi.unstubAllGlobals(); vi.restoreAllMocks(); });
 
-const sample = { id: "sale-1", number: "0123", version: 2, requestedAt: null, contactName: null, holderName: null,
-  billingName: null, billingDocument: null, billingPhone: null, billingAddress: null, billingCity: null,
-  customer: { firstName: "Ana", lastName: "Viajes", documentNumber: "123", phone: "3001234567", address: null, city: null, billingName: null, billingDocument: null },
-  passengers: [], services: [{ id: "service-1", type: "VUELO", route: null, planType: null, baggage: null, transportCompany: null, hotelName: null, supplierId: null, supplier: null, flightSegments: [] }],
-  priceLines: [{ category: "ADULTO", quantity: 2, unitPrice: "400000" }], total: "1000000", customerDueAt: "2027-02-10" };
+const passenger = { id: "p-1", firstName: "Ana", lastName: "Viajes", documentType: null, documentNumber: null, birthDate: "1990-06-12", passportNumber: null, passportExpiry: "2030-06-12" };
+const sample = { version: 2, passengers: [{ passenger }] };
 
-it("muestra un desglose distinto al total y envía personas/version sin duplicar las fechas ya existentes", async () => {
-  const send = vi.fn(async (url: string, init?: RequestInit) => {
-    if (url === "/api/suppliers") return { ok: true, json: async () => ({ suppliers: [] }) };
-    if (init?.method === "PATCH") return { ok: true, json: async () => ({ version: 3 }) };
-    return { ok: true, json: async () => ({ sale: sample }) };
-  });
+it("presenta solo pasajeros y guarda los cambios con la versión de la OS", async () => {
+  const send = vi.fn(async (_url: string, init?: RequestInit) => init?.method === "PATCH" ? { ok: true, json: async () => ({ version: 3 }) } : { ok: true, json: async () => ({ sale: sample }) });
   const saved = vi.fn(async () => {});
   vi.stubGlobal("fetch", send);
-  render(<SaleOrderDetails saleId="sale-1" saleVersion={2} canEditCommercial canEditOperational canViewFinancial saved={saved} />);
-  expect(await screen.findByText(/Diferencia de.*respecto al total acordado/)).toBeTruthy();
-  expect(screen.getByText(/N.º RSVA: los localizadores/)).toBeTruthy();
-  expect(screen.queryByText("Orden de servicio en PDF")).toBeNull();
-  fireEvent.change(screen.getByLabelText("Contacto"), { target: { value: "María Acosta" } });
-  fireEvent.submit(screen.getByRole("button", { name: "Guardar personas y facturación" }).closest("form")!);
+  render(<SaleOrderDetails saleId="sale-1" initial={sample} canEditOperational saved={saved} />);
+  expect(await screen.findByRole("heading", { name: "Datos de los pasajeros" })).toBeTruthy();
+  expect(screen.queryByText(/Formato físico|Facturar a|Servicios y emitido por|Valores por tipo de pasajero/)).toBeNull();
+  fireEvent.change(screen.getByLabelText("Nombres *"), { target: { value: "María" } });
+  fireEvent.click(screen.getByRole("button", { name: "Guardar pasajeros" }));
   await waitFor(() => expect(saved).toHaveBeenCalledOnce());
-  const write = send.mock.calls.find(([, init]) => init?.method === "PATCH")!;
-  expect(JSON.parse(write[1]!.body as string)).toMatchObject({ section: "people", version: 2, contactName: "María Acosta" });
+  expect(JSON.parse(send.mock.calls.find(([, init]) => init?.method === "PATCH")![1]!.body as string)).toMatchObject({ section: "passengers", version: 2, passengers: [{ id: "p-1", firstName: "María" }] });
+  expect(send.mock.calls.every(([url]) => url === "/api/sales/sale-1/order-details")).toBe(true);
+  expect(send).toHaveBeenCalledTimes(1);
 });
 
-it("back office edita operación sin ver precios financieros", async () => {
-  vi.stubGlobal("fetch", vi.fn(async (url: string) => url === "/api/suppliers" ? { ok: true, json: async () => ({ suppliers: [] }) } : { ok: true, json: async () => ({ sale: { ...sample, total: undefined, priceLines: undefined } }) }));
-  render(<SaleOrderDetails saleId="sale-1" saleVersion={2} canEditCommercial={false} canEditOperational canViewFinancial={false} saved={async () => {}} />);
-  expect(await screen.findByRole("button", { name: "Añadir tramo de vuelo" })).toBeTruthy();
-  expect(screen.getByRole("button", { name: "Añadir pasajero" })).toBeTruthy();
-  expect(screen.queryByText("Valores por tipo de pasajero · COP")).toBeNull();
-  expect(screen.queryByText("Orden de servicio en PDF")).toBeNull();
+it("permite consultar pasajeros sin permisos de edición", async () => {
+  vi.stubGlobal("fetch", vi.fn(async () => ({ ok: true, json: async () => ({ sale: sample }) })));
+  render(<SaleOrderDetails saleId="sale-1" initial={sample} canEditOperational={false} saved={async () => {}} />);
+  expect((await screen.findByLabelText("Nombres *") as HTMLInputElement).closest("fieldset")?.disabled).toBe(true);
+  expect(screen.queryByRole("button", { name: "Añadir pasajero" })).toBeNull();
 });
 
 it.each([
-  { label: "Fecha de solicitud", button: "Guardar personas y facturación", section: "people", field: "requestedAt", date: "05/01/2027", typed: "06012027", iso: "2027-01-06" },
-  { label: "Fecha de nacimiento", button: "Guardar pasajeros", section: "passengers", field: "birthDate", date: "12/06/1990", typed: "13061990", iso: "1990-06-13" },
-  { label: "Vencimiento de pasaporte", button: "Guardar pasajeros", section: "passengers", field: "passportExpiry", date: "12/06/2030", typed: "13062030", iso: "2030-06-13" },
-  { label: "Fecha de salida *", button: "Guardar vuelos", section: "service", field: "departureDate", date: "01/03/2027", typed: "02032027", iso: "2027-03-02" },
-  { label: "Fecha de llegada", button: "Guardar vuelos", section: "service", field: "arrivalDate", date: "02/03/2027", typed: "03032027", iso: "2027-03-03" },
-])("$label permite escribir y seleccionar en calendario y guarda ISO", async ({ label, button, section, field, date, typed, iso }) => {
+  { label: "Fecha de nacimiento", field: "birthDate", date: "12/06/1990", typed: "13061990", iso: "1990-06-13" },
+  { label: "Vencimiento de pasaporte", field: "passportExpiry", date: "12/06/2030", typed: "13062030", iso: "2030-06-13" },
+])("$label permite escribir y seleccionar en calendario y guarda ISO", async ({ label, field, date, typed, iso }) => {
   vi.stubGlobal("requestAnimationFrame", (callback: FrameRequestCallback) => window.setTimeout(() => callback(0), 0));
-  const populated = { ...sample, requestedAt: "2027-01-05", passengers: [{ passenger: { id: "p-1", firstName: "Ana", lastName: "Viajes", documentType: null, documentNumber: null, birthDate: "1990-06-12", passportNumber: null, passportExpiry: "2030-06-12" } }], services: [{ ...sample.services[0], flightSegments: [{ airline: "LA", origin: "BOG", destination: "LIM", departureDate: "2027-03-01", arrivalDate: "2027-03-02", departureTime: "10:00", arrivalTime: "12:00", cabinClass: "Economía" }] }] };
-  const send = vi.fn(async (url: string, init?: RequestInit) => url === "/api/suppliers" ? { ok: true, json: async () => ({ suppliers: [] }) } : init?.method === "PATCH" ? { ok: true, json: async () => ({ version: 3 }) } : { ok: true, json: async () => ({ sale: populated }) });
+  const send = vi.fn(async (_url: string, init?: RequestInit) => init?.method === "PATCH" ? { ok: true, json: async () => ({ version: 3 }) } : { ok: true, json: async () => ({ sale: sample }) });
   vi.stubGlobal("fetch", send);
-  render(<SaleOrderDetails saleId="sale-1" saleVersion={2} canEditCommercial canEditOperational canViewFinancial={false} saved={async () => {}} />);
+  render(<SaleOrderDetails saleId="sale-1" initial={sample} canEditOperational saved={async () => {}} />);
   const input = await screen.findByLabelText(label) as HTMLInputElement;
   expect(input.value).toBe(date);
   fireEvent.change(input, { target: { value: typed } });
   expect(input.value).toBe(`${typed.slice(0, 2)}/${typed.slice(2, 4)}/${typed.slice(4)}`);
-  expect(screen.queryByRole("dialog")).toBeNull();
   fireEvent.click(input);
   expect(screen.getByRole("dialog", { name: `Calendario de ${label}` })).toBeTruthy();
   const selectedIso = addDaysIsoDate(iso, 1);
   fireEvent.click(screen.getByRole("button", { name: new RegExp(`\\b${Number(selectedIso.slice(8))} de `, "i") }));
   expect(input.value).toBe(fromIsoDate(selectedIso));
-  expect(screen.queryByRole("dialog")).toBeNull();
-  fireEvent.click(screen.getByRole("button", { name: button }));
+  fireEvent.click(screen.getByRole("button", { name: "Guardar pasajeros" }));
   await waitFor(() => expect(send.mock.calls.some(([, init]) => init?.method === "PATCH")).toBe(true));
-  const body = JSON.parse(send.mock.calls.find(([, init]) => init?.method === "PATCH")![1]!.body as string);
-  expect(body.section).toBe(section);
-  expect(section === "people" ? body[field] : section === "passengers" ? body.passengers[0][field] : body.segments[0][field]).toBe(selectedIso);
+  expect(JSON.parse(send.mock.calls.find(([, init]) => init?.method === "PATCH")![1]!.body as string).passengers[0][field]).toBe(selectedIso);
 });
 
-it("rechaza una fecha imposible antes de guardar detalles", async () => {
-  const send = vi.fn(async (url: string, _init?: RequestInit) => url === "/api/suppliers" ? { ok: true, json: async () => ({ suppliers: [] }) } : { ok: true, json: async () => ({ sale: sample }) });
+it("rechaza fechas imposibles antes de guardar pasajeros", async () => {
+  const send = vi.fn(async () => ({ ok: true, json: async () => ({ sale: sample }) }));
   vi.stubGlobal("fetch", send);
-  render(<SaleOrderDetails saleId="sale-1" saleVersion={2} canEditCommercial canEditOperational canViewFinancial={false} saved={async () => {}} />);
-  const input = await screen.findByLabelText("Fecha de solicitud");
-  fireEvent.change(input, { target: { value: "31022027" } });
-  fireEvent.click(screen.getByRole("button", { name: "Guardar personas y facturación" }));
+  render(<SaleOrderDetails saleId="sale-1" initial={sample} canEditOperational saved={async () => {}} />);
+  const input = await screen.findByLabelText("Fecha de nacimiento");
+  fireEvent.change(input, { target: { value: "31021990" } });
+  fireEvent.click(screen.getByRole("button", { name: "Guardar pasajeros" }));
   expect(screen.getByRole("alert").textContent).toContain("Revisa las fechas");
   expect(send.mock.calls.some(([, init]) => init?.method === "PATCH")).toBe(false);
 });

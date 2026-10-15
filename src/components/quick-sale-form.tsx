@@ -42,7 +42,7 @@ export function QuickSaleForm({ supportAdvisors }: { supportAdvisors?: { id: str
         const result = await response.json();
         if (!controller.signal.aborted) setAvailability({ number: orderNumber, state: result.available ? "available" : "taken" });
       } catch { if (!controller.signal.aborted) setAvailability({ number: orderNumber, state: "error" }); }
-    }, 200);
+    }, 120);
     return () => { controller.abort(); clearTimeout(timer); };
   }, [orderNumber]);
 
@@ -74,7 +74,7 @@ export function QuickSaleForm({ supportAdvisors }: { supportAdvisors?: { id: str
       }) });
       const result = await response.json();
       if (!response.ok) { setError(result.details?.fieldErrors ? Object.values(result.details.fieldErrors).flat().join(" · ") : result.error); return; }
-      router.push(`/ventas/${result.id}`); router.refresh();
+       router.push(`/ventas/${result.id}`);
     } catch { setError("No fue posible conectar. Reintenta: la solicitud conservará el mismo identificador y no duplicará la venta."); }
     finally { setBusy(false); }
   }
@@ -106,5 +106,5 @@ export function QuickSaleForm({ supportAdvisors }: { supportAdvisors?: { id: str
       <div className="form-actions"><button className="btn btn-primary" disabled={busy || !customer || orderNumber.length !== 4 || orderTaken || !services.length || (services.includes("OTRO") && !notes.trim())}>{busy ? "Creando expediente…" : "Crear venta"}<ArrowRight size={17} aria-hidden="true" /></button></div><p className="muted small" style={{ textAlign: "right" }}>Ctrl + Enter para crear</p>
     </form>
   </section>
-  <aside><div className="card" style={{ background: "linear-gradient(135deg,#eef2ff,#faf5ff)" }}><ShieldCheck color="#4f46e5" size={28} aria-hidden="true" /><h2 style={{ marginTop: 18 }}>Primero el cliente. Luego la venta.</h2><p className="muted">Busca su ficha o créala sin salir de esta pantalla. El expediente se crea como borrador y podrás añadir pasajeros, documentos y proveedores después.</p></div><div className="card" style={{ marginTop: 20 }}><Info color="#4f46e5" size={20} aria-hidden="true" /><h2 style={{ marginTop: 14 }}>Resumen inmediato</h2><div className="list-row"><span className="muted">Precio acordado</span><strong>{money(amount)}</strong></div><div className="list-row"><span className="muted">Abono por validar</span><strong>{money(deposit)}</strong></div><div className="list-row"><span className="muted">Saldo contable inicial</span><strong>{money(amount)}</strong></div>{deposit > 0 && <p className="muted small">Proyección después de validar: {money(Math.max(0, amount - deposit))}.</p>}</div></aside></div>;
+  <aside><div className="card feature-card"><ShieldCheck color="var(--primary)" size={28} aria-hidden="true" /><h2 style={{ marginTop: 18 }}>Primero el cliente. Luego la venta.</h2><p className="muted">Busca su ficha o créala sin salir de esta pantalla. El expediente se crea como borrador y podrás añadir pasajeros y localizadores después.</p></div><div className="card" style={{ marginTop: 20 }}><Info color="var(--primary)" size={20} aria-hidden="true" /><h2 style={{ marginTop: 14 }}>Resumen inmediato</h2><div className="list-row"><span className="muted">Precio acordado</span><strong>{money(amount)}</strong></div><div className="list-row"><span className="muted">Abono por validar</span><strong>{money(deposit)}</strong></div><div className="list-row"><span className="muted">Saldo contable inicial</span><strong>{money(amount)}</strong></div>{deposit > 0 && <p className="muted small">Proyección después de validar: {money(Math.max(0, amount - deposit))}.</p>}</div></aside></div>;
 }

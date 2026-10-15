@@ -31,7 +31,7 @@ export function CustomerPicker({ selected, onSelect, inlineCreate = false }: { s
         setOptions(found); setActive(0); setOpen(true);
         setSearch({ query, status: found.length ? "found" : "empty" });
       } catch { if (!controller.signal.aborted) { setOptions([]); setSearch({ query, status: "error" }); } }
-    }, 180);
+    }, 140);
     return () => { controller.abort(); clearTimeout(timer); };
   }, [query, selected]);
 

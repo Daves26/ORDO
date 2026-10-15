@@ -65,12 +65,6 @@ enum LocatorSource {
   OTRO
 }
 
-enum PassengerCategory {
-  ADULTO
-  NINO
-  INFANTE
-}
-
 model User {
   id            String    @id @default(uuid()) @db.Uuid
   name          String
@@ -217,14 +211,6 @@ model Sale {
   customerDueAt  DateTime? @db.Date
   expectedPassengers Int?
   notes          String?
-  requestedAt    DateTime? @db.Date
-  contactName    String?
-  holderName     String?
-  billingName    String?
-  billingDocument String?
-  billingPhone   String?
-  billingAddress String?
-  billingCity    String?
   commercialStatus CommercialStatus @default(BORRADOR)
   version        Int @default(1)
   createdAt      DateTime @default(now())
@@ -241,8 +227,9 @@ model Sale {
   invoices       Invoice[]
   receipts       Receipt[]
   comments       Comment[]
-  priceLines     SalePriceLine[]
   @@index([advisorId, createdAt])
+  @@index([advisorId, commercialStatus, createdAt(sort: Desc)])
+  @@index([commercialStatus, createdAt(sort: Desc)])
   @@index([customerId, createdAt])
 }
 
@@ -257,21 +244,14 @@ model Supplier {
   country      String @default("CO")
   paymentTerms String?
   active       Boolean @default(true)
-  services     Service[]
   payables     SupplierPayable[]
 }
 
 model Service {
   id              String @id @default(uuid()) @db.Uuid
   saleId          String @db.Uuid
-  supplierId      String? @db.Uuid
   type            String
   name            String
-  route           String?
-  planType        String?
-  baggage         String?
-  transportCompany String?
-  hotelName       String?
   locator         String?
   startsAt        DateTime?
   endsAt          DateTime?
@@ -282,38 +262,10 @@ model Service {
   reservationStatus ReservationStatus @default(POR_RESERVAR)
   paymentDueAt    DateTime? @db.Date
   sale            Sale @relation(fields: [saleId], references: [id])
-  supplier        Supplier? @relation(fields: [supplierId], references: [id])
   reservations    Reservation[]
-  flightSegments  FlightSegment[]
   locators        SaleLocator[]
   payables        SupplierPayable[]
   @@index([saleId])
-}
-
-model FlightSegment {
-  id              String @id @default(uuid()) @db.Uuid
-  serviceId       String @db.Uuid
-  position        Int
-  airline         String
-  departureDate   DateTime @db.Date
-  arrivalDate     DateTime? @db.Date
-  origin          String
-  destination     String
-  departureTime   String
-  arrivalTime     String
-  cabinClass      String?
-  service         Service @relation(fields: [serviceId], references: [id])
-  @@unique([serviceId, position])
-}
-
-model SalePriceLine {
-  id         String @id @default(uuid()) @db.Uuid
-  saleId     String @db.Uuid
-  category   PassengerCategory
-  quantity   Int
-  unitPrice  Decimal @db.Decimal(16, 2)
-  sale       Sale @relation(fields: [saleId], references: [id])
-  @@unique([saleId, category])
 }
 
 model Reservation {
@@ -363,6 +315,7 @@ model CustomerPayment {
   receipt        Receipt?
   corrections    PaymentAmountCorrection[]
   @@index([saleId, status])
+  @@index([status, createdAt])
 }
 
 model PaymentAmountCorrection {
@@ -481,6 +434,9 @@ model Task {
   sale       Sale @relation(fields: [saleId], references: [id])
   assignee   User? @relation("TaskAssignee", fields: [assigneeId], references: [id])
   @@index([assignedRole, status, dueAt])
+  @@index([assignedRole, status, createdAt])
+  @@index([assigneeId, status, createdAt])
+  @@index([status, createdAt])
 }
 
 model Alert {

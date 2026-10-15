@@ -4,6 +4,7 @@ import { z } from "zod";
 import { hasRole } from "@/lib/auth";
 import { db } from "@/lib/db";
 import { AppError, authorize, payload, respond } from "@/lib/http";
+import { invalidateReadModels } from "@/lib/invalidate-read-models";
 
 const schema = z.object({ amount: z.number().int().positive().safe(), method: z.enum(["TRANSFERENCIA", "EFECTIVO", "TARJETA", "CONSIGNACION", "OTRO"]), requestId: z.string().uuid() });
 type Context = { params: Promise<{ id: string }> };
@@ -30,6 +31,7 @@ export async function POST(request: Request, { params }: Context) {
           await tx.idempotencyKey.create({ data: { key: input.requestId, actorId: actor.id, operation: "PAYMENT_REPORT", entityId: created.id } });
           return created;
         }, { isolationLevel: Prisma.TransactionIsolationLevel.Serializable, maxWait: 10_000, timeout: 10_000 });
+        invalidateReadModels();
         return NextResponse.json({ id: payment.id }, { status: 201 });
       } catch (error) {
         if (error instanceof Prisma.PrismaClientKnownRequestError && (error.code === "P2034" || error.code === "P2028") && attempt < 2) continue;

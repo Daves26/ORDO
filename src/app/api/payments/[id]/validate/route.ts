@@ -5,6 +5,7 @@ import { hasRole } from "@/lib/auth";
 import { db } from "@/lib/db";
 import { AppError, authorize, payload, respond } from "@/lib/http";
 import { normalizeReceiptNumber } from "@/lib/receipt";
+import { invalidateReadModels } from "@/lib/invalidate-read-models";
 
 type Context = { params: Promise<{ id: string }> };
 const actionSchema = z.discriminatedUnion("action", [
@@ -35,6 +36,7 @@ export async function POST(request: Request, { params }: Context) {
       await tx.auditLog.create({ data: { actorId: actor.id, entity: "CustomerPayment", entityId: id, action: input.action, before: { status: "REPORTADO" }, after: { status: updated.status, ...(receipt ? { amount: old.amount.toString(), receiptNumber: receipt.number, receiptId: receipt.id } : {}) }, reason: input.action === "RECHAZAR" ? input.reason : undefined } });
       return { payment: updated, receipt };
     }, { maxWait: 10_000, timeout: 10_000 });
+    invalidateReadModels();
     return NextResponse.json({ id: result.payment.id, status: result.payment.status, receiptNumber: result.receipt?.number ?? null });
   } catch (error) { return respond(error); }
 }

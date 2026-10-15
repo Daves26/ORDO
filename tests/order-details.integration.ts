@@ -16,9 +16,8 @@ process.env.DATABASE_URL = testUrl;
 const db = new PrismaClient({ datasources: { db: { url: testUrl } } });
 
 let detailRoute: typeof import("@/app/api/sales/[id]/order-details/route");
-let supplierRoute: typeof import("@/app/api/suppliers/route");
 let deleteRoute: typeof import("@/app/api/sales/[id]/delete/route");
-let saleId = "", otherSaleId = "", customerId = "", flightId = "", hotelId = "", supplierId = "";
+let saleId = "", otherSaleId = "", customerId = "";
 const users: { id: string; role: RoleCode }[] = [];
 const params = () => ({ params: Promise.resolve({ id: saleId }) });
 const request = (path: string, body?: object, method = "GET") => new Request(`http://localhost:3000${path}`, body ? { method, headers: { origin: "http://localhost:3000", "content-type": "application/json" }, body: JSON.stringify(body) } : undefined);
@@ -46,10 +45,7 @@ beforeAll(async () => {
     services: { create: [{ type: "VUELO", name: "Vuelos" }, { type: "HOTEL", name: "Hotel" }] } } })).id;
   otherSaleId = (await db.sale.create({ data: { number: String(number - 1), customerId, advisorId: auth.actor.id, destination: "Quito", total: 900_000,
     services: { create: [{ type: "HOTEL", name: "Hotel" }] } } })).id;
-  flightId = (await db.service.findFirstOrThrow({ where: { saleId, type: "VUELO" } })).id;
-  hotelId = (await db.service.findFirstOrThrow({ where: { saleId, type: "HOTEL" } })).id;
   detailRoute = await import("@/app/api/sales/[id]/order-details/route");
-  supplierRoute = await import("@/app/api/suppliers/route");
   deleteRoute = await import("@/app/api/sales/[id]/delete/route");
 });
 
@@ -58,34 +54,17 @@ afterAll(async () => {
     const { deleteCustomerGraph } = await import("@/lib/hard-delete");
     await db.$transaction((tx) => deleteCustomerGraph(tx, customerId), { timeout: 30_000 });
   }
-  if (supplierId) {
-    await db.auditLog.deleteMany({ where: { entity: "Supplier", entityId: supplierId } });
-    await db.supplier.deleteMany({ where: { id: supplierId } });
-  }
   await db.auditLog.deleteMany({ where: { actorId: { in: users.map(({ id }) => id) } } });
   await db.user.deleteMany({ where: { id: { in: users.map(({ id }) => id) } } });
   await db.$disconnect();
 });
 
-it("protege cada sección y guarda personas, pasajero, proveedor, tramos y desglose", async () => {
+it("protege la sección de pasajeros, reutiliza identidades y rechaza las secciones eliminadas", async () => {
   become(RoleCode.ASESOR, true);
   expect((await detailRoute.GET(request(`/api/sales/${saleId}/order-details`), params())).status).toBe(403);
-  expect((await update("people", { requestedAt: "", contactName: "Sin permiso", holderName: "", billingName: "", billingDocument: "", billingPhone: "", billingAddress: "", billingCity: "" })).status).toBe(403);
+  expect((await update("passengers", { passengers: [] })).status).toBe(403);
   become(RoleCode.BACK_OFFICE);
-  expect((await update("prices", { lines: [] })).status).toBe(403);
-  become(RoleCode.ASESOR);
-  const people = { requestedAt: "2027-01-05", contactName: "María Acosta", holderName: "Luz López", billingName: "Empresa SAS", billingDocument: "900123456", billingPhone: "6011234567", billingAddress: "Calle 1", billingCity: "Bogotá" };
-  expect((await update("people", people)).status).toBe(200);
-  expect((await update("people", { ...people, requestedAt: "2027-02-31" })).status).toBe(422);
-  const supplier = await supplierRoute.POST(request("/api/suppliers", { name: "Mayorista Uno" }, "POST"));
-  expect(supplier.status).toBe(201);
-  supplierId = (await supplier.json()).supplier.id;
-  const flight = { supplierId, route: "BOG-LIM-BOG", planType: "Turista", baggage: "23 kg", transportCompany: "Aerolínea", hotelName: "",
-    segments: [{ airline: "LA", departureDate: "2027-03-01", arrivalDate: "2027-03-02", origin: "BOG", destination: "LIM", departureTime: "23:15", arrivalTime: "02:30", cabinClass: "Economía" }] };
-  expect((await update("service", { serviceId: hotelId, ...flight })).status).toBe(422);
-  expect((await update("service", { serviceId: flightId, ...flight })).status).toBe(200);
-  expect((await update("service", { serviceId: hotelId, supplierId, route: "", planType: "Desayuno", baggage: "", transportCompany: "", hotelName: "Hotel Mirador", segments: [] })).status).toBe(200);
-  become(RoleCode.BACK_OFFICE);
+  for (const section of ["people", "service", "prices"]) expect((await update(section, { passengers: [] })).status).toBe(422);
   const passenger = { firstName: "Luz", lastName: "López", documentType: "CC", documentNumber: "1001234", birthDate: "1990-06-12", passportNumber: "PA1234", passportExpiry: "2030-06-12" };
   expect((await update("passengers", { passengers: [passenger] })).status).toBe(200);
   const identity = await db.salePassenger.findFirstOrThrow({ where: { saleId }, include: { passenger: true } });
@@ -96,32 +75,24 @@ it("protege cada sección y guarda personas, pasajero, proveedor, tramos y desgl
   expect((await update("passengers", { passengers: [passenger, passenger] })).status).toBe(422);
   const operational = await (await detailRoute.GET(request(`/api/sales/${saleId}/order-details`), params())).json();
   expect(operational.sale.total).toBeUndefined();
-  expect(operational.sale.priceLines).toBeUndefined();
-  become(RoleCode.ASESOR);
-  expect((await update("prices", { lines: [{ category: "ADULTO", quantity: 2, unitPrice: 400_000 }, { category: "NINO", quantity: 1, unitPrice: 100_000 }] })).status).toBe(200);
-  const current = await db.sale.findUniqueOrThrow({ where: { id: saleId } });
-  expect(Number(current.total)).toBe(1_000_000);
-  expect((await update("people", { ...people, billingName: "Otra empresa" })).status).toBe(200);
-  expect((await db.sale.findUniqueOrThrow({ where: { id: saleId } })).billingName).toBe("Otra empresa");
-  expect(await db.flightSegment.count({ where: { serviceId: flightId } })).toBe(1);
-  expect(await db.salePriceLine.count({ where: { saleId } })).toBe(2);
+  expect(operational.sale.passengers).toHaveLength(1);
+  expect(operational.sale.services).toBeUndefined();
+  expect((await update("passengers", { passengers: [passenger], supplierId: crypto.randomUUID() })).status).toBe(422);
 });
 
-it("impide modificaciones obsoletas y elimina detalles relacionados al borrar la OS", async () => {
+it("impide modificaciones obsoletas y conserva pasajeros compartidos al borrar la OS", async () => {
   become(RoleCode.ASESOR);
   const previous = (await db.sale.findUniqueOrThrow({ where: { id: saleId } })).version;
-  const base = { requestedAt: "", contactName: "", holderName: "", billingName: "", billingDocument: "", billingPhone: "", billingAddress: "", billingCity: "" };
-  expect((await update("people", base, previous)).status).toBe(200);
-  expect((await update("people", base, previous)).status).toBe(409);
+  const identity = await db.salePassenger.findFirstOrThrow({ where: { saleId }, include: { passenger: true } });
+  const passenger = { ...identity.passenger, birthDate: "1990-06-12", passportExpiry: "2030-06-12" };
+  expect((await update("passengers", { passengers: [passenger] }, previous)).status).toBe(200);
+  expect((await update("passengers", { passengers: [passenger] }, previous)).status).toBe(409);
   become(RoleCode.ADMINISTRADOR);
   const url = `/api/sales/${saleId}/delete`;
   const impact = await (await deleteRoute.GET(request(url), params())).json();
-  expect(impact.details.tramos_vuelo).toBe(1);
-  expect(impact.details.precios_pasajeros).toBe(2);
+  expect(impact.details.pasajeros).toBe(1);
   const number = (await db.sale.findUniqueOrThrow({ where: { id: saleId } })).number;
   expect((await deleteRoute.POST(request(url, { confirm: number, fingerprint: impact.fingerprint }, "POST"), params())).status).toBe(200);
-  expect(await db.flightSegment.count({ where: { serviceId: flightId } })).toBe(0);
-  expect(await db.salePriceLine.count({ where: { saleId } })).toBe(0);
   expect(await db.sale.findUnique({ where: { id: saleId } })).toBeNull();
   expect(await db.passenger.count({ where: { sales: { some: { saleId: otherSaleId } } } })).toBe(1);
   expect(await db.sale.findUnique({ where: { id: otherSaleId } })).not.toBeNull();

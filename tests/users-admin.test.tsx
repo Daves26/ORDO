@@ -15,7 +15,7 @@ it("permite al administrador darse otro rol con motivo y refresca sus permisos",
     throw new Error(`Unexpected ${url} ${options?.method}`);
   });
   vi.stubGlobal("fetch", send);
-  render(<UsersAdmin ownId="self" />);
+  render(<UsersAdmin ownId="self" initialUsers={[{ id: "self", name: "Admin", email: "admin@example.com", active: true, version: 1, roles: [{ role: { code: "ADMINISTRADOR" } }] }]} />);
   fireEvent.click(await screen.findByRole("button", { name: "Editar roles de Admin" }));
   const checkboxes = screen.getByRole("group", { name: "Roles asignados" });
   fireEvent.click(checkboxes.querySelector('input[value="ASESOR"]')!);

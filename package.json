@@ -11,6 +11,7 @@
     "test": "vitest run",
     "test:integration": "vitest run --config vitest.integration.config.mts",
     "test:smoke": "node scripts/smoke.mjs",
+    "perf": "node scripts/perf.mjs",
     "db:migrate": "prisma migrate dev",
     "db:deploy": "prisma migrate deploy",
     "db:seed": "tsx prisma/seed.ts"

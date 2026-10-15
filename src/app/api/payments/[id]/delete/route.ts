@@ -5,6 +5,7 @@ import { db } from "@/lib/db";
 import { authorize, payload, respond } from "@/lib/http";
 import { assertDeletion, paymentDeletionPreview } from "@/lib/delete-preview";
 import { deletePaymentGraph } from "@/lib/hard-delete";
+import { invalidateReadModels } from "@/lib/invalidate-read-models";
 
 type Context = { params: Promise<{ id: string }> };
 const confirmation = z.object({ confirm: z.string(), fingerprint: z.string() });
@@ -28,6 +29,7 @@ export async function POST(request: Request, { params }: Context) {
       assertDeletion(preview, input);
       await deletePaymentGraph(tx, id);
     }, { isolationLevel: Prisma.TransactionIsolationLevel.Serializable, maxWait: 10_000, timeout: 30_000 });
+    invalidateReadModels();
     return NextResponse.json({ deleted: true });
   } catch (error) { return respond(error); }
 }

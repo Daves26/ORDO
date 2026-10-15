@@ -5,6 +5,7 @@ import { hasRole } from "@/lib/auth";
 import { db } from "@/lib/db";
 import { AppError, authorize, payload, respond } from "@/lib/http";
 import { customerSchema, normalizeDocument, normalizePhone } from "@/lib/validation";
+import { invalidateReadModels } from "@/lib/invalidate-read-models";
 
 const canCreate = (roles: RoleCode[]) => roles.includes(RoleCode.ASESOR) || roles.includes(RoleCode.GERENTE) || roles.includes(RoleCode.ADMINISTRADOR);
 
@@ -53,6 +54,7 @@ export async function POST(request: Request) {
       await tx.auditLog.create({ data: { actorId: actor.id, entity: "Customer", entityId: created.id, action: "CREAR", after: { code: created.code, firstName: created.firstName, lastName: created.lastName } } });
       return created;
     });
+    invalidateReadModels();
     return NextResponse.json({ customer }, { status: 201 });
   } catch (error) { return respond(error); }
 }

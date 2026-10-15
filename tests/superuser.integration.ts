@@ -58,7 +58,7 @@ beforeAll(async () => {
   ] });
   const supplier = await db.supplier.create({ data: { name: "Proveedor independiente" } });
   supplierId = supplier.id;
-  const service = await db.service.create({ data: { saleId, supplierId, type: "HOTEL", name: "Hotel", currency: "COP" } });
+  const service = await db.service.create({ data: { saleId, type: "HOTEL", name: "Hotel", currency: "COP" } });
   await db.reservation.create({ data: { serviceId: service.id, locator: "A123" } });
   const payable = await db.supplierPayable.create({ data: { supplierId, serviceId: service.id, amount: 200_000, dueAt: new Date("2026-12-15T00:00:00Z") } });
   const supplierPayment = await db.supplierPayment.create({ data: { payableId: payable.id, amount: 200_000, paidAt: new Date() } });

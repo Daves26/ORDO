@@ -6,6 +6,7 @@ import { AppError, authorize, payload, respond } from "@/lib/http";
 import { parseDate, saleSchema } from "@/lib/validation";
 import { saleLabel } from "@/lib/sale-number";
 import { serviceLabel } from "@/lib/service-types";
+import { invalidateReadModels } from "@/lib/invalidate-read-models";
 
 export async function GET(request: Request) {
   try {
@@ -74,6 +75,7 @@ export async function POST(request: Request) {
         throw error;
       }
     }
+    invalidateReadModels();
     return NextResponse.json({ id: saleId }, { status: 201 });
   } catch (error) { return respond(error); }
 }

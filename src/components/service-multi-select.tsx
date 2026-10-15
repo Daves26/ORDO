@@ -35,7 +35,7 @@ export function ServiceMultiSelect({ selected, onChange, disabled = false }: { s
     }
     if (event.key === "Enter") { event.preventDefault(); choices.current[SERVICE_OPTIONS[index].code]?.click(); }
   }}>
-    <span id={`${listId}-label`} style={{ fontWeight: 700, color: "#334155", fontSize: 13 }}>Servicios incluidos *</span>
+    <span id={`${listId}-label`} style={{ fontWeight: 700, color: "var(--nav-text)", fontSize: 13 }}>Servicios incluidos *</span>
     <button ref={trigger} type="button" className="btn" aria-labelledby={`${listId}-label ${listId}-summary`} aria-controls={listId} aria-expanded={open} disabled={disabled} style={{ width: "100%", justifyContent: "space-between", textAlign: "left", whiteSpace: "normal" }} onClick={() => {
       if (open) { setOpen(false); return; }
       setOpen(true); requestAnimationFrame(() => choices.current[SERVICE_OPTIONS[0].code]?.focus());

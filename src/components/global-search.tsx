@@ -9,7 +9,7 @@ export function GlobalSearch({ close, canSell }: { close: () => void; canSell: b
   useEffect(() => {
     if (query.length < 2) { setCustomers([]); return; }
     const controller = new AbortController();
-    const timer = setTimeout(() => fetch(`/api/customers?q=${encodeURIComponent(query)}`, { signal: controller.signal }).then((r) => r.json()).then((data) => setCustomers(data.customers ?? [])).catch(() => {}), 180);
+    const timer = setTimeout(() => fetch(`/api/customers?q=${encodeURIComponent(query)}`, { signal: controller.signal }).then((r) => r.json()).then((data) => { if (!controller.signal.aborted) setCustomers(data.customers ?? []); }).catch(() => {}), 140);
     return () => { controller.abort(); clearTimeout(timer); };
   }, [query]);
   function go(url: string) { close(); router.push(url); }
